@@ -1,0 +1,37 @@
+# github.com/Microsoft/go-winio v0.4.11
+github.com/Microsoft/go-winio
+# github.com/docker/distribution v2.7.1+incompatible
+github.com/docker/distribution/reference
+github.com/docker/distribution/digestset
+# github.com/docker/engine-api v0.4.0
+github.com/docker/engine-api/client
+github.com/docker/engine-api/types
+github.com/docker/engine-api/types/events
+github.com/docker/engine-api/client/transport
+github.com/docker/engine-api/client/transport/cancellable
+github.com/docker/engine-api/types/container
+github.com/docker/engine-api/types/filters
+github.com/docker/engine-api/types/network
+github.com/docker/engine-api/types/reference
+github.com/docker/engine-api/types/registry
+github.com/docker/engine-api/types/swarm
+github.com/docker/engine-api/types/time
+github.com/docker/engine-api/types/versions
+github.com/docker/engine-api/types/blkiodev
+github.com/docker/engine-api/types/strslice
+# github.com/docker/go-connections v0.4.0
+github.com/docker/go-connections/sockets
+github.com/docker/go-connections/tlsconfig
+github.com/docker/go-connections/nat
+# github.com/docker/go-units v0.3.3
+github.com/docker/go-units
+# github.com/opencontainers/go-digest v1.0.0-rc1
+github.com/opencontainers/go-digest
+# github.com/pkg/errors v0.8.1
+github.com/pkg/errors
+# golang.org/x/net v0.0.0-20190213061140-3a22650c66bd
+golang.org/x/net/context
+golang.org/x/net/proxy
+golang.org/x/net/internal/socks
+# golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a
+golang.org/x/sys/windows

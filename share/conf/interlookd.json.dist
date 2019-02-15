@@ -1,0 +1,10 @@
+{
+    "watcher": "docker",
+    "watcherOptions": {
+        "pollInterval": 15,
+        "updateInterval": 30,
+        "filters": {
+            "label": "lu.sgbt.docker.interlook=1"
+        }
+    }
+}
