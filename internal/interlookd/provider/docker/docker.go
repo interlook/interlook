@@ -15,7 +15,7 @@ import (
     "time"
 )
 
-type Watcher struct {
+type Provider struct {
     PollInterval   int
     UpdateInterval int
     Filters        map[string][]string
@@ -27,15 +27,14 @@ type Watcher struct {
     containersLock sync.RWMutex
 }
 
-func (w *Watcher) Start() {
-
-    log.Println("[INFO]", "starting docker watcher")
+func (w *Provider) Start() {
+    log.Println("[INFO]", "starting docker provider")
 
     w.closed = make(chan struct{})
     w.pollTicker = time.NewTicker(time.Duration(w.PollInterval) * time.Second)
     w.updateTicker = time.NewTicker(time.Duration(w.UpdateInterval) * time.Second)
 
-    log.Println("[DEBUG]", "watcher started")
+    log.Println("[DEBUG]", "provider started")
 
     defer w.waitGroup.Done()
 
@@ -55,7 +54,7 @@ func (w *Watcher) Start() {
     }
 }
 
-func (w *Watcher) Stop() {
+func (w *Provider) Stop() {
     log.Println("[DEBUG]", "watcher stop request received")
 
     close(w.closed)
@@ -64,7 +63,7 @@ func (w *Watcher) Stop() {
     log.Println("[DEBUG]", "watcher stopped")
 }
 
-func (w *Watcher) poll() {
+func (w *Provider) poll() {
     ctx := context.Background()
 
     cli, err := client.NewEnvClient()
@@ -115,7 +114,7 @@ func (w *Watcher) poll() {
     }
 }
 
-func (w *Watcher) onContainerStart(event events.Message) {
+func (w *Provider) onContainerStart(event events.Message) {
     log.Println("[DEBUG]", "container started", event.Actor.ID)
 
     w.containersLock.Lock()
@@ -124,7 +123,7 @@ func (w *Watcher) onContainerStart(event events.Message) {
     w.containers = append(w.containers, event.Actor.ID)
 }
 
-func (w *Watcher) onContainerStop(event events.Message) {
+func (w *Provider) onContainerStop(event events.Message) {
     log.Println("[DEBUG]", "container stopped", event.Actor.ID)
 
     w.containersLock.Lock()
@@ -137,7 +136,7 @@ func (w *Watcher) onContainerStop(event events.Message) {
     }
 }
 
-func (w *Watcher) update() {
+func (w *Provider) update() {
     ctx := context.Background()
 
     cli, err := client.NewEnvClient()
@@ -215,7 +214,7 @@ func (w *Watcher) update() {
     w.containersLock.RUnlock()
 }
 
-func (w *Watcher) getHostIPAddress() (ip string, err error) {
+func (w *Provider) getHostIPAddress() (ip string, err error) {
     addrs, err := net.InterfaceAddrs()
     if err != nil {
         return "", err
@@ -232,10 +231,10 @@ func (w *Watcher) getHostIPAddress() (ip string, err error) {
     return "", errors.Errorf("failed to get host IP address")
 }
 
-func (w *Watcher) addTarget(host string, ip string, port string, description string) {
+func (w *Provider) addTarget(host string, ip string, port string, description string) {
     // FIXME: update vhost
 }
 
-func (w *Watcher) removeTarget(host string, ip string, port string, description string) {
+func (w *Provider) removeTarget(host string, ip string, port string, description string) {
     // FIXME: update vhost
 }

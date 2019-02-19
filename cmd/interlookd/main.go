@@ -2,8 +2,7 @@ package main
 
 import (
     "encoding/json"
-    "github.com/bhuisgen/interlook/internal/interlookd/docker"
-    "github.com/bhuisgen/interlook/internal/interlookd/swarm"
+    "github.com/bhuisgen/interlook/internal/interlookd/core"
     "io/ioutil"
     "log"
     "os"
@@ -12,21 +11,20 @@ import (
 )
 
 type ApplicationConfiguration struct {
-    Watcher string `json:"watcher"`
+    Provider string `json:"watcher"`
 }
 
 type Application struct {
-    Configuration ApplicationConfiguration
-    dockerWatcher docker.Watcher
-    swarmWatcher  swarm.Watcher
+    Configuration  ApplicationConfiguration
+    Server core.Server
 }
 
 var (
-    Version   = "0.1.0"
+    Version = "0.1.0"
 )
 
 func main() {
-    log.Println("[INFO]", "interlockd", Version)
+    log.Println("[INFO]", "interlookd", Version)
 
     app := Application{}
 
@@ -64,40 +62,7 @@ func (app *Application) Run() {
     signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
     go app.handler(ch)
 
-    switch app.Configuration.Watcher {
-    case "docker":
-        app.startDocker()
-    case "swarm":
-        app.startSwarm()
-    }
-}
-
-func (app *Application) startDocker() {
-    log.Println("[INFO]", "starting docker watcher")
-
-    app.dockerWatcher = docker.Watcher{
-        PollInterval:   15,
-        UpdateInterval: 30,
-        Filters: map[string][] string{
-            "label": {"lu.sgbt.docker.interlook"},
-        },
-    }
-
-    app.dockerWatcher.Start()
-}
-
-func (app *Application) startSwarm() {
-    log.Println("[INFO]", "starting swarm watcher")
-
-    app.swarmWatcher = swarm.Watcher{
-        PollInterval:   15,
-        UpdateInterval: 30,
-        Filters: map[string][] string{
-            "label": {"lu.sgbt.docker.interlook"},
-        },
-    }
-
-    app.swarmWatcher.Start()
+    app.Server.Run()
 }
 
 func (app *Application) handler(sigs <-chan os.Signal) {
@@ -105,17 +70,13 @@ func (app *Application) handler(sigs <-chan os.Signal) {
 
     log.Println("[INFO]", "signal", sig, "received, aborting execution")
 
-    switch app.Configuration.Watcher {
-    case "docker":
-        app.dockerWatcher.Stop()
-
-    case "swarm":
-        app.swarmWatcher.Stop()
-    }
-
     if sig.String() == "terminated" {
+        app.Server.Exit(sig)
+
         os.Exit(0)
     } else {
+        app.Server.Exit(sig)
+
         os.Exit(1)
     }
 }

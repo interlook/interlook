@@ -10,7 +10,7 @@ import (
     "time"
 )
 
-type Watcher struct {
+type Provider struct {
     PollInterval   int
     UpdateInterval int
     Filters        map[string][]string
@@ -22,12 +22,12 @@ type Watcher struct {
     servicesLock   sync.RWMutex
 }
 
-func (w *Watcher) Start() {
+func (w *Provider) Start() {
     w.closed = make(chan struct{})
     w.pollTicker = time.NewTicker(time.Duration(w.PollInterval) * time.Second)
     w.updateTicker = time.NewTicker(time.Duration(w.UpdateInterval) * time.Second)
 
-    log.Println("[DEBUG]", "watcher started")
+    log.Println("[DEBUG]", "provider started")
 
     for {
         select {
@@ -47,7 +47,7 @@ func (w *Watcher) Start() {
     }
 }
 
-func (w *Watcher) Stop() {
+func (w *Provider) Stop() {
     log.Println("[DEBUG]", "watcher stop request received")
 
     close(w.closed)
@@ -56,7 +56,7 @@ func (w *Watcher) Stop() {
     log.Println("[DEBUG]", "watcher stopped")
 }
 
-func (w *Watcher) poll() {
+func (w *Provider) poll() {
     ctx := context.Background()
 
     cli, err := client.NewEnvClient()
@@ -97,7 +97,7 @@ func (w *Watcher) poll() {
     w.services = services
 }
 
-func (w *Watcher) update() {
+func (w *Provider) update() {
     ctx := context.Background()
 
     cli, err := client.NewEnvClient()
@@ -184,10 +184,10 @@ func (w *Watcher) update() {
     w.servicesLock.RUnlock()
 }
 
-func (w *Watcher) addTarget(host string, ip string, port string, description string) {
+func (w *Provider) addTarget(host string, ip string, port string, description string) {
     // FIXME: update vhost
 }
 
-func (w *Watcher) removeTarget(host string, ip string, port string, description string) {
+func (w *Provider) removeTarget(host string, ip string, port string, description string) {
     // FIXME: update vhost
 }
