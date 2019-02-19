@@ -10,6 +10,19 @@ import (
     "time"
 )
 
+// ProviderConfiguration holds the provider static configuration
+type ProviderConfiguration struct {
+    Name           string   `toml:"name"`
+    Endpoint       string   `toml:"endpoint"`
+    LabelSelector  []string `toml:"labelSelector"`
+    TLSCa          string   `toml:"tlsCa"`
+    TLSCert        string   `toml:"tlsCert"`
+    TLSKey         string   `toml:"tlsKey"`
+    Watch          bool     `toml:"watch"`
+    WatchInterval  string   `toml:"watchInterval"`
+    UpdateInterval string   `toml:"updateInterval"`
+}
+// FIXME: will Init function initialize the Provider (from ProviderConfiguration)?
 type Provider struct {
     PollInterval   int
     UpdateInterval int

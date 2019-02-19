@@ -1,0 +1,27 @@
+[core]
+listenPort = "8080"
+defaultDomain = "domain.com"
+logLevel = "INFO"
+logFile = "interlook.log"
+
+[docker]
+name = "dev"
+endpoint = "tcp://ucp.csnet.me:443"
+labelSelector = [""]
+tlsCa = "/path/to/ca"
+tlsCert = "/path/to/cert"
+tlsKey = "/path/to/key"
+watch = true
+watchInterval = "15s"
+updateInterval = "30s"
+
+[swarm]
+name = "dev"
+endpoint = "tcp://ucp.csnet.me:443"
+labelSelector = [""]
+tlsCa = "/path/to/ca"
+tlsCert = "/path/to/cert"
+tlsKey = "/path/to/key"
+watch = true
+watchInterval = "15s"
+updateInterval = "30s"
