@@ -9,18 +9,18 @@ import (
 type Provider interface {
 
 	// not really needed?
-	Init()
+	Init() error
 
 	// Push allows the provider to push events that will trigger DNS and LB configurations
 	// through channel
-	Push(configurationChan chan<- service.Message) error
+	//Push(configurationChan chan<- service.Message) error
 
 	// Run starts the provider, providing a data channel to push message
 	// and an event channel to forward SIG
-	Run(chan service.Message, chan<- os.Signal)
+	Run(push chan service.Message, sig chan os.Signal) error
 
 	// Start and stop could be replaced with Run having os signals channels?
-	Start()
+	//Start()
 
-	Stop()
+	//Stop()
 }
