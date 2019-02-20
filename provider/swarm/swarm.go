@@ -1,6 +1,7 @@
 package swarm
 
 import (
+    "github.com/bhuisgen/interlook/service"
     "github.com/docker/engine-api/client"
     "github.com/docker/engine-api/types"
     "github.com/docker/engine-api/types/filters"
@@ -8,6 +9,7 @@ import (
     "log"
     "sync"
     "time"
+    "os"
 )
 
 // ProviderConfiguration holds the provider static configuration
@@ -22,6 +24,19 @@ type ProviderConfiguration struct {
     WatchInterval  string   `toml:"watchInterval"`
     UpdateInterval string   `toml:"updateInterval"`
 }
+
+func (p *ProviderConfiguration) Run(push chan service.Message, sig chan os.Signal) error {
+	var msg service.Message
+	msg.Action = "test"
+	msg.Provider = "swarm"
+	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
+
+	// do stuff
+	push <- msg
+	return nil
+}
+
+
 // FIXME: will Init function initialize the Provider (from ProviderConfiguration)?
 type Provider struct {
     PollInterval   int

@@ -31,11 +31,7 @@ type ProviderConfiguration struct {
 	UpdateInterval string   `toml:"updateInterval"`
 }
 
-func (p *ProviderConfiguration) Init() error {
-	return nil
-}
-
-func (p *ProviderConfiguration) Run(push chan service.Message, sig chan<- os.Signal) error {
+func (p *ProviderConfiguration) Run(push chan service.Message, sig chan os.Signal) error {
 	var msg service.Message
 	msg.Action = "test"
 	msg.Provider = "swarm"

@@ -9,7 +9,7 @@ import (
 type Provider interface {
 
 	// not really needed?
-	Init() error
+	//Init() error
 
 	// Push allows the provider to push events that will trigger DNS and LB configurations
 	// through channel
