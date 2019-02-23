@@ -5,10 +5,10 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"sync"
 	"time"
 
+	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
@@ -31,15 +31,24 @@ type ProviderConfiguration struct {
 	UpdateInterval string   `toml:"updateInterval"`
 }
 
-func (p *ProviderConfiguration) Run(push chan service.Message, sig chan os.Signal) error {
+func (p *ProviderConfiguration) Start(push chan service.Message) error {
+	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
 	msg.Action = "test"
 	msg.Provider = "swarm"
 	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
-
+	for {
+		time.Sleep(2*time.Second)
+		push <- msg
+	}
+	logger.DefaultLogger().Println("exiting")
 	// do stuff
-	push <- msg
+	//push <- msg
 	return nil
+}
+
+func (p *ProviderConfiguration) Stop() {
+	logger.DefaultLogger().Printf("Stopping %v\n", p.Name)
 }
 
 // FIXME: will Init function initialize the Provider (from ProviderConfiguration)?

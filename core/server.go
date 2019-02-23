@@ -1,12 +1,12 @@
 package core
 
 import (
-	"fmt"
-	"log"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/bhuisgen/interlook/config"
+	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
 )
 
@@ -17,6 +17,7 @@ type manager struct {
 	signals             chan os.Signal
 	configuredProviders []Provider
 	activeProviders     map[string]*activeProvider
+	workflow            map[int]string
 }
 
 // activeProvider holds the "activated" provider's channels
@@ -52,6 +53,12 @@ func makeManager() (manager, error) {
 		core.configuredProviders = append(core.configuredProviders, core.config.Swarm)
 	}
 
+	tmp := strings.Split(core.config.Core.Workflow, ",")
+	core.workflow = make(map[int]string)
+	for k, v := range tmp {
+		core.workflow[k+1] = v
+	}
+	logger.DefaultLogger().Print(core.workflow)
 	return core, nil
 }
 
@@ -61,9 +68,10 @@ func Start() {
 
 // Init init and start the core server
 func Init() {
+	logger.DefaultLogger().Printf("Starting server")
 	core, err := makeManager()
 	if err != nil {
-		log.Fatal(err)
+		logger.DefaultLogger().Fatal(err)
 	}
 	core.start()
 }
@@ -76,26 +84,26 @@ func (m *manager) start() {
 	signal.Notify(signalChan, os.Interrupt)
 	signal.Notify(signalChan, os.Kill)
 
+	// start all configured providers
 	for _, prov := range core.configuredProviders {
 		activeProvider := makeActiveProvider()
 		core.activeProviders[core.config.Docker.Name] = activeProvider
 
-		go activeProvider.listen()
+		go m.handle(activeProvider)
 
-		//go core.config.Docker.Run(activeProvider.dataChan, activeProvider.sigChan)
 		go func() {
-			err := prov.Run(activeProvider.dataChan, activeProvider.sigChan)
+			err := prov.Start(activeProvider.dataChan)
 			if err != nil {
-				fmt.Printf("Cannot start the provider %T: %v", prov, err)
+				logger.DefaultLogger().Errorf("Cannot start the provider %T: %v\n", prov, err)
 			}
 		}()
 	}
-
+	// handle SIGs and extensions clean shutdown
 	go func() {
-		for sig := range signalChan {
-			fmt.Println("Received interrupt, stopping extensions...")
-			for _, prov := range m.activeProviders {
-				prov.sigChan <- sig
+		for _ = range signalChan {
+			logger.DefaultLogger().Println("Received interrupt, stopping extensions...")
+			for _, prov := range m.configuredProviders {
+				prov.Stop()
 			}
 			stopExtensions <- true
 		}
@@ -103,13 +111,14 @@ func (m *manager) start() {
 	<-stopExtensions
 }
 
-func (p *activeProvider) listen() {
+func (m *manager) handle(p *activeProvider) {
 	for {
 		select {
 		case newService := <-p.dataChan:
-			fmt.Printf("received message: %v \n", newService.Action)
+			newService.Service.CurrentStep = 1
+			logger.DefaultLogger().Printf("received message: %v, routing to next step %v %v \n", newService.Action)
 		case newSig := <-p.sigChan:
-			fmt.Println("provider died?", newSig.String())
+			logger.DefaultLogger().Printf("provider died?", newSig.String())
 		}
 	}
 }

@@ -1,22 +1,67 @@
 package logger
 
 import (
+	"io"
 	"os"
 	"runtime"
 	"strconv"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
-// Init initialize logger
-// Don't use init() otherwise get called before the conf file is parsed
-func Init() {
+var defaultLogger Logger
 
-	log.SetFormatter(&log.TextFormatter{})
-	logLevel, _ := log.ParseLevel("INFO")
-	log.SetLevel(logLevel)
-	log.SetOutput(os.Stdout)
-	log.Info("logger initialized")
+// Log fields
+const (
+	ProviderName = "providerName"
+	ServiceName  = "serviceName"
+)
+
+// Logger is the default app logger
+type Logger interface {
+	logrus.FieldLogger
+}
+
+func init() {
+	defaultLogger = logrus.StandardLogger()
+	logrus.SetOutput(os.Stdout)
+	logrus.SetFormatter(&logrus.TextFormatter{})
+	logLevel, _ := logrus.ParseLevel("INFO")
+	logrus.SetLevel(logLevel)
+	logrus.SetOutput(os.Stdout)
+	logrus.Info("logger initialized")
+}
+
+// SetOutput sets the standard logger output.
+func SetOutput(out io.Writer) {
+	logrus.SetOutput(out)
+}
+
+// SetFormatter sets the standard logger formatter.
+func SetFormatter(formatter logrus.Formatter) {
+	logrus.SetFormatter(formatter)
+}
+
+// SetLevel sets the standard logger level.
+func SetLevel(level logrus.Level) {
+	logrus.SetLevel(level)
+}
+
+// GetLevel returns the standard logger level.
+func GetLevel() logrus.Level {
+	return logrus.GetLevel()
+}
+
+// Str adds a string field
+func Str(key, value string) func(logrus.Fields) {
+	return func(fields logrus.Fields) {
+		fields[key] = value
+	}
+}
+
+// DefaultLogger Gets the main logger
+func DefaultLogger() Logger {
+	return defaultLogger
 }
 
 func errInfo() (info string) {

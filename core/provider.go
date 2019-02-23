@@ -1,8 +1,6 @@
 package core
 
 import (
-	"os"
-
 	"github.com/bhuisgen/interlook/service"
 )
 
@@ -17,10 +15,10 @@ type Provider interface {
 
 	// Run starts the provider, providing a data channel to push message
 	// and an event channel to forward SIG
-	Run(push chan service.Message, sig chan os.Signal) error
+	Start(push chan service.Message) error
 
 	// Start and stop could be replaced with Run having os signals channels?
 	//Start()
 
-	//Stop()
+	Stop()
 }

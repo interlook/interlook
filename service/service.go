@@ -14,4 +14,7 @@ type Service struct {
 	Hosts       []string
 	Port        int
 	TLS         bool
+	CurrentStep int
+	State       string
+	Error       string
 }

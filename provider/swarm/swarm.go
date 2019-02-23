@@ -1,6 +1,7 @@
 package swarm
 
 import (
+    "github.com/bhuisgen/interlook/log"
     "github.com/bhuisgen/interlook/service"
     "github.com/docker/engine-api/client"
     "github.com/docker/engine-api/types"
@@ -9,7 +10,6 @@ import (
     "log"
     "sync"
     "time"
-    "os"
 )
 
 // ProviderConfiguration holds the provider static configuration
@@ -25,9 +25,10 @@ type ProviderConfiguration struct {
     UpdateInterval string   `toml:"updateInterval"`
 }
 
-func (p *ProviderConfiguration) Run(push chan service.Message, sig chan os.Signal) error {
+func (p *ProviderConfiguration) Start(push chan service.Message) error {
+    logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
-	msg.Action = "test"
+	msg.Action = "add"
 	msg.Provider = "swarm"
 	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
 
@@ -36,6 +37,9 @@ func (p *ProviderConfiguration) Run(push chan service.Message, sig chan os.Signa
 	return nil
 }
 
+func (p *ProviderConfiguration) Stop() {
+	logger.DefaultLogger().Printf("Stopping %v on %v\n", p.Name, p.Endpoint)
+}
 
 // FIXME: will Init function initialize the Provider (from ProviderConfiguration)?
 type Provider struct {
@@ -49,8 +53,8 @@ type Provider struct {
     services       []string
     servicesLock   sync.RWMutex
 }
-
-func (w *Provider) Start() {
+// FIXME: temp renamed for interface
+func (w *Provider) StartO() {
     w.closed = make(chan struct{})
     w.pollTicker = time.NewTicker(time.Duration(w.PollInterval) * time.Second)
     w.updateTicker = time.NewTicker(time.Duration(w.UpdateInterval) * time.Second)

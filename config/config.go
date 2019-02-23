@@ -20,6 +20,11 @@ type CoreConfig struct {
 	DefaultDomain string `toml:"defaultDomain"`
 	LogLevel      string `toml:"logLevel"`
 	LogFile       string `toml:"logFile"`
+	Workflow	  string `toml:"workflow"`
+}
+
+type Workflow struct {
+	Sequence map[int]string
 }
 
 func ReadConfig(file string) (*ServerConfiguration, error) {
@@ -27,5 +32,6 @@ func ReadConfig(file string) (*ServerConfiguration, error) {
 	if _, err := toml.DecodeFile(file, &cfg); err != nil {
 		return &cfg, err
 	}
+
 	return &cfg, nil
 }
