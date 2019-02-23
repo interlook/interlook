@@ -1,0 +1,42 @@
+---
+core:
+  logLevel: INFO
+  listenPort: 8080
+  logFile : /toto.log
+  workflow: provider.docker,ip.mycloud,dns.consul,lb.f5
+provider:
+  docker:
+    name: myDocker
+    endpoint: tcp://docker.net:443
+    labelSelector:
+      - interlook.host
+    tlsCa: path/to/ca
+    tlsCert: path/to/cert
+    tlsKey: path/to/key
+    Watch: true
+    WatchInterval: 10s
+    updateInterval: 15s
+  swarm:
+    name: mySwarm
+    endpoint: tcp://swarm.net:443
+    labelSelector:
+      - interlook.host
+    tlsCa: path/to/ca
+    tlsCert: path/to/cert
+    tlsKey: path/to/key
+    Watch: true
+    WatchInterval: 10s
+    updateInterval: 15s
+ip:
+  file:
+    range:
+      - start: 192.168.1.0
+      - end: 192.168.1.20
+    network: 192.168.1.0/24
+dns:
+  consul:
+    endpoint: http://consul.local:8500
+lb:
+  f5:
+    endpoint: http://myf5.local:10000
+    token: nvajnfva-avsv  

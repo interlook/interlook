@@ -37,20 +37,21 @@ var core manager
 
 func makeManager() (manager, error) {
 	var err error
-	core.config, err = config.ReadConfig("./share/conf/config.toml")
+	core.config, err = config.ReadConfig("./share/conf/config.yml")
 	if err != nil {
 		return core, err
 	}
 
 	core.activeProviders = make(map[string]*activeProvider)
 	core.signals = make(chan os.Signal)
-
+	logger.DefaultLogger().Println(core.config.Provider.Docker)
+	logger.DefaultLogger().Println(core.config.Provider.Swarm)
 	// get configured providers
-	if core.config.Docker != nil {
-		core.configuredProviders = append(core.configuredProviders, core.config.Docker)
+	if core.config.Provider.Docker != nil {
+		core.configuredProviders = append(core.configuredProviders, core.config.Provider.Docker)
 	}
-	if core.config.Swarm != nil {
-		core.configuredProviders = append(core.configuredProviders, core.config.Swarm)
+	if core.config.Provider.Swarm != nil {
+		core.configuredProviders = append(core.configuredProviders, core.config.Provider.Swarm)
 	}
 
 	tmp := strings.Split(core.config.Core.Workflow, ",")
@@ -86,15 +87,20 @@ func (m *manager) start() {
 
 	// start all configured providers
 	for _, prov := range core.configuredProviders {
+		logger.DefaultLogger().Printf("adding %v to active prov", prov)
 		activeProvider := makeActiveProvider()
-		core.activeProviders[core.config.Docker.Name] = activeProvider
+
+		//core.activeProviders[prov.Name] = activeProvider
 
 		go m.handle(activeProvider)
+		curProv := prov
+		provChan := activeProvider.dataChan
 
 		go func() {
-			err := prov.Start(activeProvider.dataChan)
+			logger.DefaultLogger().Printf("About to start provider %v\n", curProv)
+			err := curProv.Start(provChan)
 			if err != nil {
-				logger.DefaultLogger().Errorf("Cannot start the provider %T: %v\n", prov, err)
+				logger.DefaultLogger().Errorf("Cannot start the provider %T: %v\n", curProv, err)
 			}
 		}()
 	}
@@ -112,6 +118,7 @@ func (m *manager) start() {
 }
 
 func (m *manager) handle(p *activeProvider) {
+	logger.DefaultLogger().Println("starting manager")
 	for {
 		select {
 		case newService := <-p.dataChan:
