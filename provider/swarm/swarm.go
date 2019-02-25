@@ -29,11 +29,15 @@ type ProviderConfiguration struct {
 func (p *ProviderConfiguration) Start(push chan service.Message) error {
 	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
-	msg.Action = "swarm"
-	msg.Provider = "swarm"
+	msg.Action = "add" // add, remove, update, check
+	msg.Service.Provider = "swarm"
 	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
+	msg.Service.ServiceName = "test.swarm.com"
+	msg.Service.DNSName = "test.swarm.com"
+	msg.Service.Port = 8080
+	msg.Service.TLS = true
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(10 * time.Second)
 		push <- msg
 	}
 	logger.DefaultLogger().Println("exiting")
