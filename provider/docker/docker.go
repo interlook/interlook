@@ -5,10 +5,10 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"sync"
 	"time"
 
+	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
@@ -20,26 +20,35 @@ import (
 
 // ProviderConfiguration holds the provider static configuration
 type ProviderConfiguration struct {
-	Name           string   `toml:"name"`
-	Endpoint       string   `toml:"endpoint"`
-	LabelSelector  []string `toml:"labelSelector"`
-	TLSCa          string   `toml:"tlsCa"`
-	TLSCert        string   `toml:"tlsCert"`
-	TLSKey         string   `toml:"tlsKey"`
-	Watch          bool     `toml:"watch"`
-	WatchInterval  string   `toml:"watchInterval"`
-	UpdateInterval string   `toml:"updateInterval"`
+	Name           string   `yaml:"name"`
+	Endpoint       string   `yaml:"endpoint"`
+	LabelSelector  []string `yaml:"labelSelector"`
+	TLSCa          string   `yaml:"tlsCa"`
+	TLSCert        string   `yaml:"tlsCert"`
+	TLSKey         string   `yaml:"tlsKey"`
+	Watch          bool     `yaml:"watch"`
+	WatchInterval  string   `yaml:"watchInterval"`
+	UpdateInterval string   `yaml:"updateInterval"`
 }
 
-func (p *ProviderConfiguration) Run(push chan service.Message, sig chan os.Signal) error {
+func (p *ProviderConfiguration) Start(push chan service.Message) error {
+	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
-	msg.Action = "test"
-	msg.Provider = "swarm"
+	msg.Action = "docker"
+	msg.Provider = "docker"
 	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
-
+	for {
+		time.Sleep(3 * time.Second)
+		push <- msg
+	}
+	logger.DefaultLogger().Println("exiting")
 	// do stuff
-	push <- msg
+	//push <- msg
 	return nil
+}
+
+func (p *ProviderConfiguration) Stop() {
+	logger.DefaultLogger().Printf("Stopping %v\n", p.Name)
 }
 
 // FIXME: will Init function initialize the Provider (from ProviderConfiguration)?

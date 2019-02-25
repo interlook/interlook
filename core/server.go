@@ -1,12 +1,12 @@
 package core
 
 import (
-	"fmt"
-	"log"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/bhuisgen/interlook/config"
+	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
 )
 
@@ -17,6 +17,7 @@ type manager struct {
 	signals             chan os.Signal
 	configuredProviders []Provider
 	activeProviders     map[string]*activeProvider
+	workflow            map[int]string
 }
 
 // activeProvider holds the "activated" provider's channels
@@ -36,22 +37,29 @@ var core manager
 
 func makeManager() (manager, error) {
 	var err error
-	core.config, err = config.ReadConfig("./share/conf/config.toml")
+	core.config, err = config.ReadConfig("./share/conf/config.yml")
 	if err != nil {
 		return core, err
 	}
 
 	core.activeProviders = make(map[string]*activeProvider)
 	core.signals = make(chan os.Signal)
-
+	logger.DefaultLogger().Println(core.config.Provider.Docker)
+	logger.DefaultLogger().Println(core.config.Provider.Swarm)
 	// get configured providers
-	if core.config.Docker != nil {
-		core.configuredProviders = append(core.configuredProviders, core.config.Docker)
+	if core.config.Provider.Docker != nil {
+		core.configuredProviders = append(core.configuredProviders, core.config.Provider.Docker)
 	}
-	if core.config.Swarm != nil {
-		core.configuredProviders = append(core.configuredProviders, core.config.Swarm)
+	if core.config.Provider.Swarm != nil {
+		core.configuredProviders = append(core.configuredProviders, core.config.Provider.Swarm)
 	}
 
+	tmp := strings.Split(core.config.Core.Workflow, ",")
+	core.workflow = make(map[int]string)
+	for k, v := range tmp {
+		core.workflow[k+1] = v
+	}
+	logger.DefaultLogger().Print(core.workflow)
 	return core, nil
 }
 
@@ -61,9 +69,10 @@ func Start() {
 
 // Init init and start the core server
 func Init() {
+	logger.DefaultLogger().Printf("Starting server")
 	core, err := makeManager()
 	if err != nil {
-		log.Fatal(err)
+		logger.DefaultLogger().Fatal(err)
 	}
 	core.start()
 }
@@ -76,26 +85,31 @@ func (m *manager) start() {
 	signal.Notify(signalChan, os.Interrupt)
 	signal.Notify(signalChan, os.Kill)
 
+	// start all configured providers
 	for _, prov := range core.configuredProviders {
+		logger.DefaultLogger().Printf("adding %v to active prov", prov)
 		activeProvider := makeActiveProvider()
-		core.activeProviders[core.config.Docker.Name] = activeProvider
 
-		go activeProvider.listen()
+		//core.activeProviders[prov.Name] = activeProvider
 
-		//go core.config.Docker.Run(activeProvider.dataChan, activeProvider.sigChan)
+		go m.handle(activeProvider)
+		curProv := prov
+		provChan := activeProvider.dataChan
+
 		go func() {
-			err := prov.Run(activeProvider.dataChan, activeProvider.sigChan)
+			logger.DefaultLogger().Printf("About to start provider %v\n", curProv)
+			err := curProv.Start(provChan)
 			if err != nil {
-				fmt.Printf("Cannot start the provider %T: %v", prov, err)
+				logger.DefaultLogger().Errorf("Cannot start the provider %T: %v\n", curProv, err)
 			}
 		}()
 	}
-
+	// handle SIGs and extensions clean shutdown
 	go func() {
-		for sig := range signalChan {
-			fmt.Println("Received interrupt, stopping extensions...")
-			for _, prov := range m.activeProviders {
-				prov.sigChan <- sig
+		for _ = range signalChan {
+			logger.DefaultLogger().Println("Received interrupt, stopping extensions...")
+			for _, prov := range m.configuredProviders {
+				prov.Stop()
 			}
 			stopExtensions <- true
 		}
@@ -103,13 +117,15 @@ func (m *manager) start() {
 	<-stopExtensions
 }
 
-func (p *activeProvider) listen() {
+func (m *manager) handle(p *activeProvider) {
+	logger.DefaultLogger().Println("starting manager")
 	for {
 		select {
 		case newService := <-p.dataChan:
-			fmt.Printf("received message: %v \n", newService.Action)
+			newService.Service.CurrentStep = 1
+			logger.DefaultLogger().Printf("received message: %v, routing to next step %v %v \n", newService.Action)
 		case newSig := <-p.sigChan:
-			fmt.Println("provider died?", newSig.String())
+			logger.DefaultLogger().Printf("provider died?", newSig.String())
 		}
 	}
 }
