@@ -28,7 +28,7 @@ provider:
     WatchInterval: 10s
     updateInterval: 15s
 ip:
-  file:
+  static:
     range:
       - start: 192.168.1.0
       - end: 192.168.1.20
@@ -36,7 +36,7 @@ ip:
 dns:
   consul:
     endpoint: http://consul.local:8500
-lb:
+loadbalancer:
   f5:
     endpoint: http://myf5.local:10000
     token: nvajnfva-avsv  
