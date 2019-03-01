@@ -23,12 +23,14 @@ type Logger interface {
 }
 
 func init() {
+	// FIXME: properly configure logger based on config file.
+	// TODO: Add timestamp
+	// TODO: Add package/file field to std logger
 	defaultLogger = logrus.StandardLogger()
 	logrus.SetOutput(os.Stdout)
 	logrus.SetFormatter(&logrus.TextFormatter{})
-	logLevel, _ := logrus.ParseLevel("INFO")
+	logLevel, _ := logrus.ParseLevel("DEBUG")
 	logrus.SetLevel(logLevel)
-	logrus.SetOutput(os.Stdout)
 	logrus.Info("logger initialized")
 }
 

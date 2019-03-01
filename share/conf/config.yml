@@ -1,9 +1,10 @@
 ---
 core:
-  logLevel: INFO
+  logLevel: DEBUG
   listenPort: 8080
   logFile : /toto.log
-  workflow: provider.docker,ip.mycloud,dns.consul,lb.f5
+  workflow: provider.docker,ipam.file
+  checkFlowInterval: 5s
 provider:
   docker:
     name: myDocker
@@ -16,23 +17,12 @@ provider:
     Watch: true
     WatchInterval: 10s
     updateInterval: 15s
-  swarm:
-    name: mySwarm
-    endpoint: tcp://swarm.net:443
-    labelSelector:
-      - interlook.host
-    tlsCa: path/to/ca
-    tlsCert: path/to/cert
-    tlsKey: path/to/key
-    Watch: true
-    WatchInterval: 10s
-    updateInterval: 15s
-ip:
-  static:
-    range:
-      - start: 192.168.1.0
-      - end: 192.168.1.20
-    network: 192.168.1.0/24
+ipam:
+  file:
+    ip_start:
+    ip_end:
+    network_cidr: 192.168.1.0/24
+    db_file: ./share/conf/allocated.db
 dns:
   consul:
     endpoint: http://consul.local:8500
