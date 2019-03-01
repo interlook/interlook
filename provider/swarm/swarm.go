@@ -13,8 +13,8 @@ import (
 	"golang.org/x/net/context"
 )
 
-// ProviderConfiguration holds the provider static configuration
-type ProviderConfiguration struct {
+// Extension holds the provider file configuration
+type Extension struct {
 	Name           string   `yaml:"name"`
 	Endpoint       string   `yaml:"endpoint"`
 	LabelSelector  []string `yaml:"labelSelector"`
@@ -26,31 +26,31 @@ type ProviderConfiguration struct {
 	UpdateInterval string   `yaml:"updateInterval"`
 }
 
-func (p *ProviderConfiguration) Start(push chan service.Message) error {
+func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
 	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
 	msg.Action = "add" // add, remove, update, check
 	msg.Service.Provider = "swarm"
 	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
-	msg.Service.ServiceName = "test.swarm.com"
+	msg.Service.Name = "test.swarm.com"
 	msg.Service.DNSName = "test.swarm.com"
 	msg.Service.Port = 8080
 	msg.Service.TLS = true
 	for {
 		time.Sleep(10 * time.Second)
-		push <- msg
+		send <- msg
 	}
 	logger.DefaultLogger().Println("exiting")
 	// do stuff
-	//push <- msg
+	//send <- msg
 	return nil
 }
 
-func (p *ProviderConfiguration) Stop() {
+func (p *Extension) Stop() {
 	logger.DefaultLogger().Printf("Stopping %v on %v\n", p.Name, p.Endpoint)
 }
 
-// FIXME: will Init function initialize the Provider (from ProviderConfiguration)?
+// FIXME: will Init function initialize the Provider (from Extension)?
 type Provider struct {
 	PollInterval   int
 	UpdateInterval int

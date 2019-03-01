@@ -18,8 +18,8 @@ import (
 	"golang.org/x/net/context"
 )
 
-// ProviderConfiguration holds the provider static configuration
-type ProviderConfiguration struct {
+// Extension holds the provider file configuration
+type Extension struct {
 	Name           string   `yaml:"name"`
 	Endpoint       string   `yaml:"endpoint"`
 	LabelSelector  []string `yaml:"labelSelector"`
@@ -32,20 +32,22 @@ type ProviderConfiguration struct {
 }
 
 // Start initialize and start sending events to core
-func (p *ProviderConfiguration) Start(push chan service.Message) error {
+func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
 	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
 	msg.Action = "add" // add, remove, update, check
 	msg.Service.Provider = "docker"
-	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
-	msg.Service.ServiceName = "test.docker.com"
+	msg.Service.Hosts = append(msg.Service.Hosts, "172.1.1.2")
+	msg.Service.Name = "test.docker.com"
 	msg.Service.DNSName = "test.docker.com"
 	msg.Service.Port = 8080
-	msg.Service.TLS = true
+	msg.Service.TLS = false
+
+	//push <- msg
 
 	for {
-		time.Sleep(3 * time.Second)
-		push <- msg
+		time.Sleep(10 * time.Second)
+		send <- msg
 	}
 	// do stuff
 	//push <- msg
@@ -53,11 +55,11 @@ func (p *ProviderConfiguration) Start(push chan service.Message) error {
 }
 
 // Stop stops the provider
-func (p *ProviderConfiguration) Stop() {
+func (p *Extension) Stop() {
 	logger.DefaultLogger().Printf("Stopping %v\n", p.Name)
 }
 
-// FIXME: will Init function initialize the Provider (from ProviderConfiguration)?
+// FIXME: will Init function initialize the Provider (from Extension)?
 type Provider struct {
 	PollInterval   int
 	UpdateInterval int
@@ -218,7 +220,7 @@ func (w *Provider) update() {
 			}
 		}
 		if ip == "" {
-			log.Println("[ERROR]", "failed to get host ip")
+			log.Println("[ERROR]", "failed to get host ipam")
 
 			return
 		}
@@ -271,7 +273,7 @@ func (w *Provider) getHostIPAddress() (ip string, err error) {
 		}
 	}
 
-	return "", errors.Errorf("failed to get host IP address")
+	return "", errors.Errorf("failed to get host IPAM address")
 }
 
 func (w *Provider) addTarget(host string, ip string, port string, description string) {
