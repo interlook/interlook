@@ -9,7 +9,7 @@ import (
 	"github.com/bhuisgen/interlook/service"
 )
 
-// TODO: review states - const. Also defined in service pkg...
+// TODO: move msg related status to service pkg.
 const (
 	flowDeployedState      = "deployed"
 	flowUndeployedState    = "undeployed"
