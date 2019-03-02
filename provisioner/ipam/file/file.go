@@ -1,7 +1,7 @@
 package file
 
 // TODO: write readme
-// FIXME: create "db" file if not exists
+// TODO: implement stop
 // FIXME: skip first "0" address from subnet in ip allocation
 import (
 	"encoding/json"
@@ -58,7 +58,7 @@ func incrementIP(ip net.IP) {
 func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
 	// load db from file
 	if err := p.db.load(p.DbFile); err != nil {
-		logger.DefaultLogger().Debugf("error loading db file %v", err.Error())
+		logger.DefaultLogger().Warnf("error loading db file %v", err.Error())
 	}
 	for {
 		msg := <-receive
@@ -67,8 +67,15 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 		switch msg.Action {
 		case "delete":
 			msg.Action = "extUpdate"
-			// check if service is already defined
-			// if yes send back msg with update action
+			if err := p.db.deleteService(msg.Service.Name); err != nil {
+				msg.Error = err.Error()
+				logger.DefaultLogger().Error(msg.Error)
+				send <- msg
+				continue
+			}
+			msg.Service.DNSName = ""
+			msg.Service.PublicIP = ""
+			send <- msg
 		default:
 			// check if service is already defined
 			// if yes send back msg with update action
@@ -100,6 +107,16 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 
 func (p *Extension) Stop() {
 
+}
+
+func (d *db) deleteService(name string) error {
+	for i, v := range d.Records {
+		if v.Host == name {
+			d.Records = append(d.Records[:i], d.Records[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("Could not find record for " + name)
 }
 
 func (d db) getServiceByName(name string) (svc IPAMRecord) {
