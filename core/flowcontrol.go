@@ -11,49 +11,43 @@ import (
 // triggers required action(s) to bring service state
 // to desired state (deployed or undeployed)
 func (s *server) flowControl() {
-	for {
-		// TODO: add config for check interval
-		// TODO: remove sleep in favour of ticker
-		// TODO: rewrite/refactor
-		time.Sleep(3 * time.Second)
-		logger.DefaultLogger().Debug("Running flowControl")
-		for k, v := range s.flowEntries.M {
-			if v.State != v.ExpectedState && !v.WorkInProgress {
-				logger.DefaultLogger().Debugf("flowControl: Service %v current state differs from target state", k)
-				reverse := false
-				if v.ExpectedState == flowUndeployedState {
-					reverse = true
-				}
-				nextStep, err := s.workflow.getNextStep(v.CurrentState, reverse)
-				if err != nil {
-					logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
-					continue
-				}
-				if s.workflow.isLastStep(nextStep, reverse) {
-					logger.DefaultLogger().Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
-					s.flowEntries.Lock()
-					s.flowEntries.M[k].WorkInProgress = false
-					s.flowEntries.M[k].CurrentState = ""
-					s.flowEntries.M[k].State = flowDeployedState
-					s.flowEntries.Unlock()
-					continue
-				}
-
-				s.flowEntries.Lock()
-				s.flowEntries.M[k].WorkInProgress = true
-				s.flowEntries.M[k].CurrentState = nextStep
-				s.flowEntries.Unlock()
-				var msg service.Message
-				msg.Action = "add" // add, remove, update, check
-				msg.Service = v.Service
-				// get the extension channel to write message to
-				ext, ok := s.extensionChannels[nextStep]
-				if !ok {
-					logger.DefaultLogger().Errorf("flowControl could not find channel for ext %v\n", nextStep)
-					continue
-				}
-				ext.receive <- msg
+	logger.DefaultLogger().Debug("Running flowControl")
+	for k, v := range s.flowEntries.M {
+		if v.State != v.ExpectedState && !v.WorkInProgress {
+			logger.DefaultLogger().Debugf("flowControl: Service %v current state differs from target state", k)
+			reverse := false
+			if v.ExpectedState == flowUndeployedState {
+				reverse = true
 			}
+			nextStep, err := s.workflow.getNextStep(v.CurrentState, reverse)
+			if err != nil {
+				logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
+				continue
+			}
+			if s.workflow.isLastStep(nextStep, reverse) {
+				logger.DefaultLogger().Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
+				s.flowEntries.Lock()
+				s.flowEntries.M[k].WorkInProgress = false
+				s.flowEntries.M[k].CurrentState = ""
+				s.flowEntries.M[k].State = flowDeployedState
+				s.flowEntries.Unlock()
+				continue
+			}
+
+			s.flowEntries.Lock()
+			s.flowEntries.M[k].WorkInProgress = true
+			s.flowEntries.M[k].CurrentState = nextStep
+			s.flowEntries.Unlock()
+			var msg service.Message
+			msg.Action = "add" // add, remove, update, check
+			msg.Service = v.Service
+			// get the extension channel to write message to
+			ext, ok := s.extensionChannels[nextStep]
+			if !ok {
+				logger.DefaultLogger().Errorf("flowControl could not find channel for ext %v\n", nextStep)
+				continue
+			}
+			ext.receive <- msg
 		}
 	}
 }
@@ -72,7 +66,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 	}
 
 	if serviceExist {
-		logger.DefaultLogger().Debugf("InsertToFlow service %v exist\n", msg.Service.Name)
+		logger.DefaultLogger().Debugf("mergeMessage service %v exist\n", msg.Service.Name)
 		serviceUnchanged, _ = curSvc.Service.IsSameThan(msg.Service)
 		serviceStateOK = curSvc.ExpectedState == curSvc.State
 	}
@@ -93,7 +87,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 			f.Lock()
 			f.M[msg.Service.Name] = &ne
 			defer f.Unlock()
-			logger.DefaultLogger().Debugf("InsertToFlow added new service entry %v", f.M[msg.Service.Name])
+			logger.DefaultLogger().Debugf("mergeToFlow added new service entry %v", f.M[msg.Service.Name])
 			return nil
 		}
 		f.Lock()
@@ -122,7 +116,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 		f.M[msg.Service.Name].LastUpdate = time.Now()
 
 	default:
-		logger.DefaultLogger().Warnf("InsertToFlow could not handle %v action\n", msg.Action)
+		logger.DefaultLogger().Warnf("mergeToFlow could not handle %v action\n", msg.Action)
 		return errors.New("Unhandled action")
 	}
 	return nil

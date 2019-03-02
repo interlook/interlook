@@ -6,6 +6,8 @@ import (
 	"github.com/bhuisgen/interlook/config"
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
+	"time"
+
 	//"runtime"
 	"os"
 	"os/signal"
@@ -21,6 +23,7 @@ type server struct {
 	workflow          workflow
 	flowEntries       *flowEntries
 	flowChan          chan service.Message
+	flowControlTicker *time.Ticker
 }
 
 // extensionChannels holds the "activated" extensions's channels
@@ -50,6 +53,7 @@ func initServer() (server, error) {
 	srv.extensionChannels = make(map[string]*extensionChannels)
 	srv.sigChannel = make(chan os.Signal)
 	srv.flowChan = make(chan service.Message)
+	srv.flowControlTicker = time.NewTicker(srv.config.Core.CheckFlowInterval)
 
 	// add configured extensions
 	if srv.config.Provider.Docker != nil {
@@ -90,8 +94,13 @@ func Init() {
 func (s *server) start() {
 	// start http server
 	go s.startHTTP()
-	// start goroutine that will manage workflow entries
-	go s.flowControl()
+
+	// start flowControl
+	go func() {
+		for range s.flowControlTicker.C {
+			s.flowControl()
+		}
+	}()
 
 	// create channel for post exit cleanup
 	stopExtensions := make(chan bool)

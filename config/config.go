@@ -15,11 +15,11 @@ import (
 // This includes all the providers and extensions
 type ServerConfiguration struct {
 	Core struct {
-		LogLevel             string        `yaml:"logLevel"`
-		ListenPort           int           `yaml:"listenPort,omitempty"`
-		LogFile              string        `yaml:"logFile"`
-		Workflow             string        `yaml:"workflow"`
-		CheckEntriesInterval time.Duration `yaml:`
+		LogLevel          string        `yaml:"logLevel"`
+		ListenPort        int           `yaml:"listenPort,omitempty"`
+		LogFile           string        `yaml:"logFile"`
+		Workflow          string        `yaml:"workflow"`
+		CheckFlowInterval time.Duration `yaml:"checkFlowInterval"`
 	} `yaml:"core"`
 	Provider struct {
 		Docker     *docker.Extension     `yaml:"docker,omitempty"`
