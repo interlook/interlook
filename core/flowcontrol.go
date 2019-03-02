@@ -52,8 +52,6 @@ func (s *server) flowControl() {
 					logger.DefaultLogger().Errorf("flowControl could not find channel for ext %v\n", nextStep)
 					continue
 				}
-				logger.DefaultLogger().Debugf("flowControl writing to %v %v channel\n", nextStep, ext.name)
-				logger.DefaultLogger().Debugf("CheckServiceEntries receive: %v", ext.receive)
 				ext.receive <- msg
 			}
 		}
@@ -61,9 +59,9 @@ func (s *server) flowControl() {
 }
 
 // mergeMessage manages messages received from extensions
-// TODO: code review, remove current_step, rewrite
+// TODO: code review
 func (f *flowEntries) mergeMessage(msg service.Message) error {
-	logger.DefaultLogger().Debugf("InsertToFlow received %v\n", msg)
+	logger.DefaultLogger().Debugf("mergeMessage received %v\n", msg)
 	var serviceExist, serviceUnchanged, serviceStateOK bool
 	serviceExist = true
 
@@ -87,31 +85,24 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 	switch msg.Action {
 	case msgAddAction:
 		if !serviceExist {
-			f.Lock()
-			defer f.Unlock()
-			//msg.Service.ID = genUUID()
 			ne := makeNewEntry()
 			ne.Service = msg.Service
 			ne.ExpectedState = flowDeployedState
 			ne.State = flowDeployState
-			ne.CurrentState = "provider." + msg.Service.Provider
+			ne.CurrentState = msg.Sender
+			f.Lock()
 			f.M[msg.Service.Name] = &ne
+			defer f.Unlock()
 			logger.DefaultLogger().Debugf("InsertToFlow added new service entry %v", f.M[msg.Service.Name])
 			return nil
 		}
 		f.Lock()
 		defer f.Unlock()
-		//msg.Service.ID = f.M[msg.Service.Name].Service.ID
-		f.M[msg.Service.Name].Service = msg.Service
+		f.M[msg.Service.Name].Service.Hosts = msg.Service.Hosts
+		f.M[msg.Service.Name].Service.Port = msg.Service.Port
+		f.M[msg.Service.Name].Service.TLS = msg.Service.TLS
 		f.M[msg.Service.Name].ExpectedState = flowDeployedState
 		f.M[msg.Service.Name].LastUpdate = time.Now()
-
-	case msgUpdateAction:
-		// FIXME: only there if provider is able to send update msg
-		f.Lock()
-		defer f.Unlock()
-		f.M[msg.Service.Name].WorkInProgress = false
-		f.M[msg.Service.Name].Error = msg.Error
 
 	case msgUpdateFromExtension:
 		logger.DefaultLogger().Debugf("Got msg from extension")
