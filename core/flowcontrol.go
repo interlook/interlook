@@ -11,48 +11,43 @@ import (
 // triggers required action(s) to bring service state
 // to desired state (deployed or undeployed)
 func (s *server) flowControl() {
-	for {
-		// TODO: remove sleep in favour of ticker
-		// TODO: rewrite/refactor
-		time.Sleep(s.config.Core.CheckFlowInterval)
-		logger.DefaultLogger().Debug("Running flowControl")
-		for k, v := range s.flowEntries.M {
-			if v.State != v.ExpectedState && !v.WorkInProgress {
-				logger.DefaultLogger().Debugf("flowControl: Service %v current state differs from target state", k)
-				reverse := false
-				if v.ExpectedState == flowUndeployedState {
-					reverse = true
-				}
-				nextStep, err := s.workflow.getNextStep(v.CurrentState, reverse)
-				if err != nil {
-					logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
-					continue
-				}
-				if s.workflow.isLastStep(nextStep, reverse) {
-					logger.DefaultLogger().Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
-					s.flowEntries.Lock()
-					s.flowEntries.M[k].WorkInProgress = false
-					s.flowEntries.M[k].CurrentState = ""
-					s.flowEntries.M[k].State = flowDeployedState
-					s.flowEntries.Unlock()
-					continue
-				}
-
-				s.flowEntries.Lock()
-				s.flowEntries.M[k].WorkInProgress = true
-				s.flowEntries.M[k].CurrentState = nextStep
-				s.flowEntries.Unlock()
-				var msg service.Message
-				msg.Action = "add" // add, remove, update, check
-				msg.Service = v.Service
-				// get the extension channel to write message to
-				ext, ok := s.extensionChannels[nextStep]
-				if !ok {
-					logger.DefaultLogger().Errorf("flowControl could not find channel for ext %v\n", nextStep)
-					continue
-				}
-				ext.receive <- msg
+	logger.DefaultLogger().Debug("Running flowControl")
+	for k, v := range s.flowEntries.M {
+		if v.State != v.ExpectedState && !v.WorkInProgress {
+			logger.DefaultLogger().Debugf("flowControl: Service %v current state differs from target state", k)
+			reverse := false
+			if v.ExpectedState == flowUndeployedState {
+				reverse = true
 			}
+			nextStep, err := s.workflow.getNextStep(v.CurrentState, reverse)
+			if err != nil {
+				logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
+				continue
+			}
+			if s.workflow.isLastStep(nextStep, reverse) {
+				logger.DefaultLogger().Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
+				s.flowEntries.Lock()
+				s.flowEntries.M[k].WorkInProgress = false
+				s.flowEntries.M[k].CurrentState = ""
+				s.flowEntries.M[k].State = flowDeployedState
+				s.flowEntries.Unlock()
+				continue
+			}
+
+			s.flowEntries.Lock()
+			s.flowEntries.M[k].WorkInProgress = true
+			s.flowEntries.M[k].CurrentState = nextStep
+			s.flowEntries.Unlock()
+			var msg service.Message
+			msg.Action = "add" // add, remove, update, check
+			msg.Service = v.Service
+			// get the extension channel to write message to
+			ext, ok := s.extensionChannels[nextStep]
+			if !ok {
+				logger.DefaultLogger().Errorf("flowControl could not find channel for ext %v\n", nextStep)
+				continue
+			}
+			ext.receive <- msg
 		}
 	}
 }
