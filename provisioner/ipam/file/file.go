@@ -2,7 +2,6 @@ package file
 
 // TODO: write readme
 // TODO: implement stop
-// FIXME: skip first "0" address from subnet in ip allocation
 import (
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -135,6 +135,10 @@ func (p Extension) addService(name string) (newIP string, err error) {
 		return "", err
 	}
 	for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); incrementIP(ip) {
+
+		if ip.IsMulticast() || strings.Contains(ipnet.String(), ip.String()) {
+			continue
+		}
 		if p.db.isIPFree(ip) {
 			newRec := IPAMRecord{ip.String(), name}
 			p.db.Records = append(p.db.Records, newRec)
