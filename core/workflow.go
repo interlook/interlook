@@ -1,7 +1,10 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
+	"io/ioutil"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +52,39 @@ type workflowEntry struct {
 type flowEntries struct {
 	sync.Mutex
 	M map[string]*workflowEntry `json:"entries,omitempty"`
+}
+
+func (f *flowEntries) save(file string) error {
+	dbFile, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer dbFile.Close()
+
+	data, err := json.Marshal(f.M)
+	{
+		if err != nil {
+			return err
+		}
+	}
+	_, err = dbFile.Write(data)
+	if err != nil {
+		return err
+	}
+	dbFile.Sync()
+
+	return nil
+}
+
+func (f *flowEntries) loadFile(file string) error {
+	dbFile, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(dbFile, &f.M); err != nil {
+		return err
+	}
+	return nil
 }
 
 // initialize the workflow from config
