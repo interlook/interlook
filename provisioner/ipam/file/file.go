@@ -8,7 +8,6 @@ import (
 	"github.com/bhuisgen/interlook/service"
 	"io/ioutil"
 	"net"
-	"os"
 	"strings"
 	"sync"
 )
@@ -74,12 +73,13 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 			switch msg.Action {
 			case "delete":
 				msg.Action = "extUpdate"
-				if err := p.db.deleteService(msg.Service.Name); err != nil {
+				if err := p.deleteService(msg.Service.Name); err != nil {
+					logger.DefaultLogger().Errorf("Error deleting service %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
-					logger.DefaultLogger().Error(msg.Error)
 					send <- msg
 					continue
 				}
+				p.db.save(p.DbFile)
 				msg.Service.DNSName = ""
 				msg.Service.PublicIP = ""
 				send <- msg
@@ -91,7 +91,6 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 
 				if p.serviceExist(&msg) {
 					logger.DefaultLogger().Debugf("service %v already exist", msg.Service.DNSName)
-
 					record := p.db.getServiceByName(msg.Service.DNSName)
 					msg.Service.DNSName = record.Host
 					msg.Service.PublicIP = record.IP
@@ -100,7 +99,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 					continue
 				}
 				logger.DefaultLogger().Debugf("service %v does not exist, adding", msg.Service.DNSName)
-				ip, err := p.addService(msg.Service.DNSName)
+				ip, err := p.addService(msg.Service.Name)
 				if err != nil {
 					msg.Error = err.Error()
 					send <- msg
@@ -118,10 +117,10 @@ func (p *Extension) Stop() {
 	p.shutdown <- true
 }
 
-func (d *db) deleteService(name string) error {
-	for i, v := range d.Records {
+func (p *Extension) deleteService(name string) error {
+	for i, v := range p.db.Records {
 		if v.Host == name {
-			d.Records = append(d.Records[:i], d.Records[i+1:]...)
+			p.db.Records = append(p.db.Records[:i], p.db.Records[i+1:]...)
 			return nil
 		}
 	}
@@ -137,7 +136,7 @@ func (d db) getServiceByName(name string) (svc IPAMRecord) {
 	return svc
 }
 
-func (p Extension) addService(name string) (newIP string, err error) {
+func (p *Extension) addService(name string) (newIP string, err error) {
 	logger.DefaultLogger().Debugf("cidr: %v", p.NetworkCidr)
 	ip, ipnet, err := net.ParseCIDR(p.NetworkCidr)
 	if err != nil {
@@ -161,23 +160,16 @@ func (p Extension) addService(name string) (newIP string, err error) {
 }
 
 func (d *db) save(file string) error {
-	f, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
 	data, err := json.Marshal(d.Records)
 	{
 		if err != nil {
 			return err
 		}
 	}
-	_, err = f.Write(data)
+	err = ioutil.WriteFile(file, data, 0644)
 	if err != nil {
 		return err
 	}
-	f.Sync()
 
 	return nil
 }
