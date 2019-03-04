@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"errors"
+	"github.com/bhuisgen/interlook/log"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -30,7 +31,7 @@ type workflow map[int]string
 // workflowEntry represents a tracked service
 type workflowEntry struct {
 	// current step in the workflow
-	CurrentState string `json:"current_state,omitempty"`
+	//CurrentState string `json:"current_state,omitempty"`
 	// Indicates if an extension is currently working on the item
 	WorkInProgress bool `json:"work_in_progress,omitempty"`
 	// Current state of the item
@@ -123,6 +124,11 @@ func (w workflow) getNextStep(step string, reverse bool) (next string, err error
 	ok := false
 	if next, ok = w[index]; !ok {
 		return "", errors.New("could not find next step in workflow")
+	}
+	if strings.Contains(next, "provider.") {
+		logger.DefaultLogger().Debugf("##### next:%v", next)
+		next, _ = w.getNextStep(next, reverse)
+		logger.DefaultLogger().Debugf("##### sub next:%v", next)
 	}
 	return next, nil
 }

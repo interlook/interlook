@@ -14,32 +14,56 @@ func (s *server) flowControl() {
 	logger.DefaultLogger().Debug("Running flowControl")
 	for k, v := range s.flowEntries.M {
 		if v.State != v.ExpectedState && !v.WorkInProgress {
+			if v.Error != "" {
+				logger.DefaultLogger().Warnf("Service %v is in error %v", v.Service.Name, v.Error)
+				continue
+			}
 			logger.DefaultLogger().Debugf("flowControl: Service %v current state differs from target state", k)
 			reverse := false
 			if v.ExpectedState == flowUndeployedState {
 				reverse = true
 			}
-			nextStep, err := s.workflow.getNextStep(v.CurrentState, reverse)
+			nextStep, err := s.workflow.getNextStep(v.State, reverse)
 			if err != nil {
 				logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
 				continue
 			}
+			// add test if service existed and provider wants to recreate
+			// provider extensions are not receiving "delete" messages
+			//if strings.Contains(nextStep, "provider") {
+			//    if reverse {
+			//        lastStep, err := s.workflow.getNextStep(nextStep, reverse)
+			//        if err != nil {
+			//            logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
+			//            continue
+			//        }
+			//        nextStep = lastStep
+			//    }
+			logger.DefaultLogger().Debugf("next step: %v", nextStep)
 			if s.workflow.isLastStep(nextStep, reverse) {
 				logger.DefaultLogger().Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
 				s.flowEntries.Lock()
 				s.flowEntries.M[k].WorkInProgress = false
-				s.flowEntries.M[k].CurrentState = ""
-				s.flowEntries.M[k].State = flowDeployedState
+				if reverse {
+					s.flowEntries.M[k].State = flowUndeployedState
+				} else {
+					s.flowEntries.M[k].State = flowDeployedState
+				}
+
 				s.flowEntries.Unlock()
 				continue
 			}
 
 			s.flowEntries.Lock()
 			s.flowEntries.M[k].WorkInProgress = true
-			s.flowEntries.M[k].CurrentState = nextStep
+			s.flowEntries.M[k].State = nextStep
 			s.flowEntries.Unlock()
 			var msg service.Message
-			msg.Action = "add" // add, remove, update, check
+			if reverse {
+				msg.Action = msgDeleteAction
+			} else {
+				msg.Action = msgAddAction
+			}
 			msg.Service = v.Service
 			// get the extension channel to write message to
 			ext, ok := s.extensionChannels[nextStep]
@@ -68,7 +92,12 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 	if serviceExist {
 		logger.DefaultLogger().Debugf("mergeMessage service %v exist\n", msg.Service.Name)
 		serviceUnchanged, _ = curSvc.Service.IsSameThan(msg.Service)
-		serviceStateOK = curSvc.ExpectedState == curSvc.State
+		if curSvc.ExpectedState == curSvc.State &&
+			((curSvc.State == flowDeployedState && msg.Action == msgAddAction) ||
+				(curSvc.State == flowUndeployedState && msg.Action == msgDeleteAction)) {
+			serviceStateOK = true
+			logger.DefaultLogger().Debug("service state is OK")
+		}
 	}
 
 	if serviceUnchanged && msg.Action == msgAddAction && serviceStateOK {
@@ -82,8 +111,8 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 			ne := makeNewEntry()
 			ne.Service = msg.Service
 			ne.ExpectedState = flowDeployedState
-			ne.State = flowDeployState
-			ne.CurrentState = msg.Sender
+			//ne.State = flowDeployState
+			ne.State = msg.Sender
 			f.Lock()
 			f.M[msg.Service.Name] = &ne
 			defer f.Unlock()
@@ -95,6 +124,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 		f.M[msg.Service.Name].Service.Hosts = msg.Service.Hosts
 		f.M[msg.Service.Name].Service.Port = msg.Service.Port
 		f.M[msg.Service.Name].Service.TLS = msg.Service.TLS
+		f.M[msg.Service.Name].State = msg.Sender
 		f.M[msg.Service.Name].ExpectedState = flowDeployedState
 		f.M[msg.Service.Name].LastUpdate = time.Now()
 
