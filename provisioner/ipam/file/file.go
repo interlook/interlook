@@ -1,8 +1,6 @@
 package file
 
 // TODO: write readme
-// TODO: implement stop
-// FIXME: skip first "0" address from subnet in ip allocation
 import (
 	"encoding/json"
 	"errors"
@@ -10,7 +8,7 @@ import (
 	"github.com/bhuisgen/interlook/service"
 	"io/ioutil"
 	"net"
-	"os"
+	"strings"
 	"sync"
 )
 
@@ -19,6 +17,7 @@ type Extension struct {
 	IPEnd       string `yaml:"ip_end"`
 	NetworkCidr string `yaml:"network_cidr"`
 	DbFile      string `yaml:"db_file"`
+	shutdown    chan bool
 	db          db
 	config      *config
 }
@@ -60,59 +59,67 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	if err := p.db.load(p.DbFile); err != nil {
 		logger.DefaultLogger().Warnf("error loading db file %v", err.Error())
 	}
+	p.shutdown = make(chan bool)
+
 	for {
-		msg := <-receive
-		logger.DefaultLogger().Debugf("ipam.file received message %v\n", msg)
+		select {
+		case <-p.shutdown:
+			logger.DefaultLogger().Debug("Extension ipam.file shut down")
+			return nil
 
-		switch msg.Action {
-		case "delete":
-			msg.Action = "extUpdate"
-			if err := p.db.deleteService(msg.Service.Name); err != nil {
-				msg.Error = err.Error()
-				logger.DefaultLogger().Error(msg.Error)
+		case msg := <-receive:
+			logger.DefaultLogger().Debugf("ipam.file received message %v\n", msg)
+
+			switch msg.Action {
+			case "delete":
+				msg.Action = "extUpdate"
+				if err := p.deleteService(msg.Service.Name); err != nil {
+					logger.DefaultLogger().Errorf("Error deleting service %v", msg.Service.Name, err.Error())
+					msg.Error = err.Error()
+					send <- msg
+					continue
+				}
+				p.db.save(p.DbFile)
+				msg.Service.PublicIP = ""
 				send <- msg
-				continue
-			}
-			msg.Service.DNSName = ""
-			msg.Service.PublicIP = ""
-			send <- msg
-		default:
-			// check if service is already defined
-			// if yes send back msg with update action
-			// if not, get new IPAM, update service def and send back msg
-			msg.Action = "extUpdate"
+			default:
+				// check if service is already defined
+				// if yes send back msg with update action
+				// if not, get new IPAM, update service def and send back msg
+				msg.Action = "extUpdate"
 
-			if p.serviceExist(&msg) {
-				logger.DefaultLogger().Debugf("service %v already exist", msg.Service.DNSName)
+				if p.serviceExist(&msg) {
+					logger.DefaultLogger().Debugf("service %v already exist", msg.Service.Name)
+					record := p.db.getServiceByName(msg.Service.Name)
+					msg.Service.Name = record.Host
+					msg.Service.PublicIP = record.IP
 
-				record := p.db.getServiceByName(msg.Service.DNSName)
-				msg.Service.DNSName = record.Host
-				msg.Service.PublicIP = record.IP
-
+					send <- msg
+					continue
+				}
+				logger.DefaultLogger().Debugf("service %v does not exist, adding", msg.Service.Name)
+				ip, err := p.addService(msg.Service.Name)
+				if err != nil {
+					msg.Error = err.Error()
+					send <- msg
+					continue
+				}
+				msg.Service.PublicIP = ip
 				send <- msg
-				continue
 			}
-			logger.DefaultLogger().Debugf("service %v does not exist, adding", msg.Service.DNSName)
-			ip, err := p.addService(msg.Service.DNSName)
-			if err != nil {
-				msg.Error = err.Error()
-				send <- msg
-				continue
-			}
-			msg.Service.PublicIP = ip
-			send <- msg
 		}
 	}
 }
 
 func (p *Extension) Stop() {
-
+	logger.DefaultLogger().Info("Shutting down extension ipam.file")
+	p.shutdown <- true
 }
 
-func (d *db) deleteService(name string) error {
-	for i, v := range d.Records {
+func (p *Extension) deleteService(name string) error {
+	for i, v := range p.db.Records {
 		if v.Host == name {
-			d.Records = append(d.Records[:i], d.Records[i+1:]...)
+			p.db.Records = append(p.db.Records[:i], p.db.Records[i+1:]...)
 			return nil
 		}
 	}
@@ -128,13 +135,17 @@ func (d db) getServiceByName(name string) (svc IPAMRecord) {
 	return svc
 }
 
-func (p Extension) addService(name string) (newIP string, err error) {
+func (p *Extension) addService(name string) (newIP string, err error) {
 	logger.DefaultLogger().Debugf("cidr: %v", p.NetworkCidr)
 	ip, ipnet, err := net.ParseCIDR(p.NetworkCidr)
 	if err != nil {
 		return "", err
 	}
 	for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); incrementIP(ip) {
+
+		if ip.IsMulticast() || strings.Contains(ipnet.String(), ip.String()) {
+			continue
+		}
 		if p.db.isIPFree(ip) {
 			newRec := IPAMRecord{ip.String(), name}
 			p.db.Records = append(p.db.Records, newRec)
@@ -148,23 +159,16 @@ func (p Extension) addService(name string) (newIP string, err error) {
 }
 
 func (d *db) save(file string) error {
-	f, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
 	data, err := json.Marshal(d.Records)
 	{
 		if err != nil {
 			return err
 		}
 	}
-	_, err = f.Write(data)
+	err = ioutil.WriteFile(file, data, 0644)
 	if err != nil {
 		return err
 	}
-	f.Sync()
 
 	return nil
 }
@@ -182,7 +186,7 @@ func (d *db) load(file string) error {
 
 func (p *Extension) serviceExist(msg *service.Message) bool {
 	for _, v := range p.db.Records {
-		if v.Host == msg.Service.DNSName {
+		if v.Host == msg.Service.Name {
 			return true
 		}
 	}
