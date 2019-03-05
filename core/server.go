@@ -66,7 +66,7 @@ func initServer() (server, error) {
 		srv.extensions[service.ProviderKubernetes] = srv.config.Provider.Kubernetes
 	}
 	if srv.config.IPAM.File != nil {
-		srv.extensions[service.IpFileExtension] = srv.config.IPAM.File
+		srv.extensions[service.IPAMFile] = srv.config.IPAM.File
 	}
 
 	srv.workflow = initWorkflow()
@@ -159,6 +159,60 @@ func (s *server) extensionListener(extension *extensionChannels) {
 		logger.DefaultLogger().Debugf("ExtensionListener %v received message, sending to flow control\n", extension.name)
 		if err := srv.flowEntries.mergeMessage(newMessage); err != nil {
 			logger.DefaultLogger().Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
+		}
+	}
+}
+
+// flowControl compares provided service with existing one
+// triggers required action(s) to bring service state
+// to desired state (deployed or undeployed)
+func (s *server) flowControl() {
+	logger.DefaultLogger().Debug("Running flowControl")
+
+	for k, v := range s.flowEntries.M {
+		if v.State != v.ExpectedState && !v.WorkInProgress {
+			var msg service.Message
+
+			if v.Error != "" {
+				logger.DefaultLogger().Warnf("Service %v is in error %v", v.Service.Name, v.Error)
+				continue
+			}
+
+			logger.DefaultLogger().Debugf("flowControl: Service %v current state differs from target state", k)
+			reverse := false
+			if v.ExpectedState == flowUndeployedState {
+				reverse = true
+			}
+
+			nextStep, err := s.workflow.getNextStep(v.State, reverse)
+			if err != nil {
+				logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
+				continue
+			}
+			logger.DefaultLogger().Debugf("next step: %v", nextStep)
+
+			if s.workflow.isLastStep(nextStep, reverse) {
+				logger.DefaultLogger().Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
+				s.flowEntries.closeEntry(k, reverse)
+				continue
+			}
+
+			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
+
+			if reverse {
+				msg.Action = msgDeleteAction
+			} else {
+				msg.Action = msgAddAction
+			}
+			msg.Service = v.Service
+
+			// get the extension channel to write message to
+			ext, ok := s.extensionChannels[nextStep]
+			if !ok {
+				logger.DefaultLogger().Errorf("flowControl could not find channel for ext %v\n", nextStep)
+				continue
+			}
+			ext.receive <- msg
 		}
 	}
 }

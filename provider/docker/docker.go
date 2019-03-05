@@ -39,18 +39,29 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	msg.Service.Provider = "docker"
 	msg.Service.Hosts = append(msg.Service.Hosts, "172.1.1.2")
 	msg.Service.Name = "test.docker.com"
-	msg.Service.DNSName = "test.docker.com"
+	msg.Service.DNSName = "mytest.docker.com"
 	msg.Service.Port = 8080
 	msg.Service.TLS = false
 
 	//push <- msg
 
+	time.Sleep(1 * time.Second)
+	send <- msg
+
+	time.Sleep(15 * time.Second)
+	msg.Action = "delete"
+	send <- msg
+
+	time.Sleep(10 * time.Second)
+	msg.Action = "add"
+	send <- msg
+
 	for {
-		time.Sleep(10 * time.Second)
-		send <- msg
+		time.Sleep(180 * time.Second)
 	}
 	// do stuff
 	//push <- msg
+	return nil
 
 }
 
@@ -59,7 +70,6 @@ func (p *Extension) Stop() {
 	logger.DefaultLogger().Printf("Stopping %v\n", p.Name)
 }
 
-// FIXME: will Init function initialize the Provider (from Extension)?
 type Provider struct {
 	PollInterval   int
 	UpdateInterval int

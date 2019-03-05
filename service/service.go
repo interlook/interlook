@@ -4,7 +4,7 @@ import "reflect"
 
 const (
 	//define message senders
-	IpFileExtension    = "ipam.file"
+	IPAMFile           = "ipam.file"
 	ProviderDocker     = "provider.docker"
 	ProviderSwarm      = "provider.swarm"
 	ProviderKubernetes = "provider.kubernetes"
@@ -25,7 +25,7 @@ type Message struct {
 // Service holds the containerized service
 type Service struct {
 	Provider string `json:"provider,omitempty"`
-	Name     string `json:"service_name,omitempty"`
+	Name     string `json:"name,omitempty"`
 	//ID       string   `json:"internal_id,omitempty"`
 	Hosts    []string `json:"hosts,omitempty"`
 	Port     int      `json:"port,omitempty"`
@@ -43,9 +43,9 @@ type Service struct {
 // returns a list of fields that differ
 func (s *Service) IsSameThan(to Service) (bool, []string) {
 	var diff []string
-	//if s.DNSName != to.DNSName {
-	//    diff = append(diff, "DNSNames")
-	//}
+	if s.DNSName != to.DNSName {
+		diff = append(diff, "DNSNames")
+	}
 	if s.Port != to.Port {
 		diff = append(diff, "Port")
 	}

@@ -4,7 +4,7 @@ core:
   listenPort: 8080
   logFile : /toto.log
   workflow: provider.docker,ipam.file
-  checkFlowInterval: 5s
+  checkFlowInterval: 2s
   flowEntriesFile: ./share/flowentries.db
 provider:
   docker:

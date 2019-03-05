@@ -80,7 +80,6 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 					continue
 				}
 				p.db.save(p.DbFile)
-				msg.Service.DNSName = ""
 				msg.Service.PublicIP = ""
 				send <- msg
 			default:
@@ -90,15 +89,15 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 				msg.Action = "extUpdate"
 
 				if p.serviceExist(&msg) {
-					logger.DefaultLogger().Debugf("service %v already exist", msg.Service.DNSName)
-					record := p.db.getServiceByName(msg.Service.DNSName)
-					msg.Service.DNSName = record.Host
+					logger.DefaultLogger().Debugf("service %v already exist", msg.Service.Name)
+					record := p.db.getServiceByName(msg.Service.Name)
+					msg.Service.Name = record.Host
 					msg.Service.PublicIP = record.IP
 
 					send <- msg
 					continue
 				}
-				logger.DefaultLogger().Debugf("service %v does not exist, adding", msg.Service.DNSName)
+				logger.DefaultLogger().Debugf("service %v does not exist, adding", msg.Service.Name)
 				ip, err := p.addService(msg.Service.Name)
 				if err != nil {
 					msg.Error = err.Error()
@@ -187,7 +186,7 @@ func (d *db) load(file string) error {
 
 func (p *Extension) serviceExist(msg *service.Message) bool {
 	for _, v := range p.db.Records {
-		if v.Host == msg.Service.DNSName {
+		if v.Host == msg.Service.Name {
 			return true
 		}
 	}
