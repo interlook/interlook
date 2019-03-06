@@ -4,9 +4,15 @@ Dynamically provision VIP, Load Balancer and DNS alias based on container platfo
 
 ## TL;DR
 
-Interlook has a concept of "Providers" and "Provisioners": Providers are container platforms, Provisioners are infra components like DNS server, IPAM tools and load balancers/reverse proxies.
+Interlook has a concept of "Providers" and "Provisioners": 
 
-The core implements a basic workflow which orchestrate the tasks.
+Providers are container platforms, 
+
+Provisioners are infra components like DNS server, IPAM tools and load balancers/reverse proxies.
+
+The core receives add/delete events from the providers, injects them as a tasks workflow. 
+
+Then it ensures the tasks are performed by the "provisioners".
 
 Technically, providers and provisioners are all implementations of the Extension interface.
 
@@ -17,9 +23,9 @@ Currently supported Providers:
 
 Currently supported Provisioners:
  * IP:
-    * file (an embedded simple local IPAM)
+    * ipalloc (an embedded simple local IPAM)
  * DNS:
-    * ~~Consul~~
+    * Consul (DNS records will contain Consul specific suffix: .service.consul )
  * Load Balancer:
     * ~~F5 Big IP~~ 
     * ~~Envoy proxy~~ 
