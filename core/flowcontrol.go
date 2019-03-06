@@ -56,7 +56,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 		f.M[msg.Service.Name].LastUpdate = time.Now()
 		f.Unlock()
 
-	case msgUpdateFromExtension:
+	case MsgUpdateFromExtension:
 		logger.DefaultLogger().Debugf("Got msg from extension")
 		f.Lock()
 		defer f.Unlock()

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/bhuisgen/interlook/provisioner/dns/consul"
 	"io/ioutil"
 	"time"
 
@@ -31,14 +32,10 @@ type ServerConfiguration struct {
 		File *file.Extension `yaml:"file,omitempty"`
 	} `yaml:"ipam,omitempty"`
 	DNS struct {
+		Consul *consul.Consul `yaml:"consul,omitempty"`
 	} `yaml:"dns,omitempty"`
 	LoadBalancer struct {
 	} `yaml:"loadbalancer,omitempty"`
-}
-
-// Workflow holds the workflow steps
-type Workflow struct {
-	Sequence map[int]string
 }
 
 // ReadConfig parse the configuration file

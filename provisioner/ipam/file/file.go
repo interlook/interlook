@@ -112,8 +112,8 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 }
 
 func (p *Extension) Stop() {
-	logger.DefaultLogger().Info("Shutting down extension ipam.file")
 	p.shutdown <- true
+	logger.DefaultLogger().Warn("extension ipam.file down")
 }
 
 func (p *Extension) deleteService(name string) error {

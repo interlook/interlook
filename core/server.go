@@ -8,7 +8,6 @@ import (
 	"github.com/bhuisgen/interlook/service"
 	"time"
 
-	//"runtime"
 	"os"
 	"os/signal"
 )
@@ -67,6 +66,9 @@ func initServer() (server, error) {
 	}
 	if srv.config.IPAM.File != nil {
 		srv.extensions[service.IPAMFile] = srv.config.IPAM.File
+	}
+	if srv.config.DNS.Consul != nil {
+		srv.extensions[service.DNSConsul] = srv.config.DNS.Consul
 	}
 
 	srv.workflow = initWorkflow()
@@ -135,11 +137,12 @@ func (s *server) start() {
 	go func() {
 		for range signalChan {
 			logger.DefaultLogger().Println("Received interrupt, saving flow entries to file")
-			if err := s.flowEntries.save("./share/flowentries.db"); err != nil {
-				logger.DefaultLogger().Error()
-			}
-			logger.DefaultLogger().Println("Stopping extensions...")
-			for _, extension := range s.extensions {
+			//if err := s.flowEntries.save("./share/flowentries.db"); err != nil {
+			//    logger.DefaultLogger().Error()
+			//}
+
+			for name, extension := range s.extensions {
+				logger.DefaultLogger().Warnf("Stopping extension %v", name)
 				extension.Stop()
 			}
 			stopExtensions <- true

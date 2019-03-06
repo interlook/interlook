@@ -22,7 +22,7 @@ const (
 	msgAddAction           = "add"
 	msgUpdateAction        = "update"
 	msgDeleteAction        = "delete"
-	msgUpdateFromExtension = "extUpdate"
+	MsgUpdateFromExtension = "extUpdate"
 )
 
 // workflow holds the sequence of "steps" an item must follow to be deployed or undeployed
