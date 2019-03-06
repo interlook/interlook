@@ -7,10 +7,6 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
-const (
-	MsgAction = "extUpdate"
-)
-
 type Consul struct {
 	URL      string `json:"url"`
 	Token    string `json:"token,omitempty"`
@@ -22,28 +18,34 @@ type Consul struct {
 func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Message) error {
 	var err error
 	var consulConfig api.Config
+	var cliOK bool
 	consulConfig.Address = c.URL
 	consulConfig.Token = c.Token
 	c.client, err = api.NewClient(&consulConfig)
 	if err != nil {
 		return err
 	}
-	// TODO: add a simple connection to consul test
+	// Check we can connect to consul
+	cliOK, err = c.isServiceExist("consul")
+	if !cliOK || err != nil {
+		return err
+	}
+
 	c.shutdown = make(chan bool)
 	for {
 		select {
 		case msg := <-receive:
 			switch msg.Action {
-			case "delete":
+			case service.MsgDeleteAction:
 				logger.DefaultLogger().Debugf("request to delete dns for %v", msg.Service.Name)
-				msg.Action = MsgAction
+				msg.Action = service.MsgUpdateFromExtension
 				if err := c.deregister(msg.Service.DNSName); err != nil {
 					msg.Error = err.Error()
 				}
 				send <- msg
 
 			default:
-				msg.Action = MsgAction
+				msg.Action = service.MsgUpdateFromExtension
 
 				registration := api.CatalogRegistration{
 					Node:     msg.Service.DNSName,
@@ -74,11 +76,8 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 			}
 		case <-c.shutdown:
 			return nil
-
 		}
-
 	}
-	return nil
 }
 
 func (c *Consul) Stop() {

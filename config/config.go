@@ -8,7 +8,7 @@ import (
 	"github.com/bhuisgen/interlook/provider/docker"
 	"github.com/bhuisgen/interlook/provider/kubernetes"
 	"github.com/bhuisgen/interlook/provider/swarm"
-	"github.com/bhuisgen/interlook/provisioner/ipam/file"
+	"github.com/bhuisgen/interlook/provisioner/ipam/ipalloc"
 	"gopkg.in/yaml.v2"
 )
 
@@ -29,7 +29,7 @@ type ServerConfiguration struct {
 		Kubernetes *kubernetes.Extension `yaml:"kubernetes,omitempty"`
 	} `yaml:"provider"`
 	IPAM struct {
-		File *file.Extension `yaml:"file,omitempty"`
+		IPAlloc *ipalloc.Extension `yaml:"ipalloc,omitempty"`
 	} `yaml:"ipam,omitempty"`
 	DNS struct {
 		Consul *consul.Consul `yaml:"consul,omitempty"`
@@ -38,7 +38,7 @@ type ServerConfiguration struct {
 	} `yaml:"loadbalancer,omitempty"`
 }
 
-// ReadConfig parse the configuration file
+// ReadConfig parse the configuration ipalloc
 func ReadConfig(file string) (*ServerConfiguration, error) {
 	var cfg ServerConfiguration
 	f, err := ioutil.ReadFile(file)

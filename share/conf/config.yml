@@ -3,7 +3,7 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : /toto.log
-  workflow: provider.docker,ipam.file,dns.consul
+  workflow: provider.docker,ipam.ipalloc,dns.consul
   checkFlowInterval: 2s
   flowEntriesFile: ./share/flowentries.db
 provider:
@@ -19,7 +19,7 @@ provider:
     WatchInterval: 10s
     updateInterval: 15s
 ipam:
-  file:
+  ipalloc:
     ip_start:
     ip_end:
     network_cidr: 192.168.1.0/24
