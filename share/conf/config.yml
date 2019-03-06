@@ -3,7 +3,7 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : /toto.log
-  workflow: provider.docker,ipam.file
+  workflow: provider.docker,ipam.ipalloc,dns.consul
   checkFlowInterval: 2s
   flowEntriesFile: ./share/flowentries.db
 provider:
@@ -19,14 +19,16 @@ provider:
     WatchInterval: 10s
     updateInterval: 15s
 ipam:
-  file:
+  ipalloc:
     ip_start:
     ip_end:
     network_cidr: 192.168.1.0/24
     db_file: ./share/conf/allocated.db
 dns:
   consul:
-    endpoint: http://consul.local:8500
+    url: http://127.0.0.1:8500
+    domain: docker.com
+    token:
 loadbalancer:
   f5:
     endpoint: http://myf5.local:10000

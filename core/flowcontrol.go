@@ -28,13 +28,13 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 		serviceStateOK = curSvc.isStateAsWanted(msg.Action)
 	}
 
-	if serviceUnchanged && msg.Action == msgAddAction && serviceStateOK {
+	if serviceUnchanged && msg.Action == service.MsgAddAction && serviceStateOK {
 		logger.DefaultLogger().Debugf("Service %v already defined\n", msg.Service.Name)
 		return nil
 	}
 
 	switch msg.Action {
-	case msgAddAction:
+	case service.MsgAddAction:
 		if !serviceExist {
 			ne := makeNewFlowEntry()
 			ne.Service = msg.Service
@@ -56,7 +56,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 		f.M[msg.Service.Name].LastUpdate = time.Now()
 		f.Unlock()
 
-	case msgUpdateFromExtension:
+	case service.MsgUpdateFromExtension:
 		logger.DefaultLogger().Debugf("Got msg from extension")
 		f.Lock()
 		defer f.Unlock()
@@ -67,7 +67,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 			return nil
 		}
 
-	case msgDeleteAction:
+	case service.MsgDeleteAction:
 		f.Lock()
 		defer f.Unlock()
 		f.M[msg.Service.Name].ExpectedState = flowUndeployedState

@@ -1,6 +1,5 @@
-package file
+package ipalloc
 
-// TODO: write readme
 import (
 	"encoding/json"
 	"errors"
@@ -55,24 +54,24 @@ func incrementIP(ip net.IP) {
 }
 
 func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
-	// load db from file
+	// load db from ipalloc
 	if err := p.db.load(p.DbFile); err != nil {
-		logger.DefaultLogger().Warnf("error loading db file %v", err.Error())
+		logger.DefaultLogger().Warnf("error loading db ipalloc %v", err.Error())
 	}
 	p.shutdown = make(chan bool)
 
 	for {
 		select {
 		case <-p.shutdown:
-			logger.DefaultLogger().Debug("Extension ipam.file shut down")
+			logger.DefaultLogger().Debug("Extension ipam.ipalloc shut down")
 			return nil
 
 		case msg := <-receive:
-			logger.DefaultLogger().Debugf("ipam.file received message %v\n", msg)
+			logger.DefaultLogger().Debugf("ipam.ipalloc received message %v\n", msg)
 
 			switch msg.Action {
-			case "delete":
-				msg.Action = "extUpdate"
+			case service.MsgDeleteAction:
+				msg.Action = service.MsgUpdateFromExtension
 				if err := p.deleteService(msg.Service.Name); err != nil {
 					logger.DefaultLogger().Errorf("Error deleting service %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
@@ -86,7 +85,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 				// check if service is already defined
 				// if yes send back msg with update action
 				// if not, get new IPAM, update service def and send back msg
-				msg.Action = "extUpdate"
+				msg.Action = service.MsgUpdateFromExtension
 
 				if p.serviceExist(&msg) {
 					logger.DefaultLogger().Debugf("service %v already exist", msg.Service.Name)
@@ -112,8 +111,8 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 }
 
 func (p *Extension) Stop() {
-	logger.DefaultLogger().Info("Shutting down extension ipam.file")
 	p.shutdown <- true
+	logger.DefaultLogger().Warn("extension ipam.ipalloc down")
 }
 
 func (p *Extension) deleteService(name string) error {

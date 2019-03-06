@@ -8,7 +8,6 @@ import (
 	"github.com/bhuisgen/interlook/service"
 	"time"
 
-	//"runtime"
 	"os"
 	"os/signal"
 )
@@ -65,8 +64,11 @@ func initServer() (server, error) {
 	if srv.config.Provider.Kubernetes != nil {
 		srv.extensions[service.ProviderKubernetes] = srv.config.Provider.Kubernetes
 	}
-	if srv.config.IPAM.File != nil {
-		srv.extensions[service.IPAMFile] = srv.config.IPAM.File
+	if srv.config.IPAM.IPAlloc != nil {
+		srv.extensions[service.IPAMFile] = srv.config.IPAM.IPAlloc
+	}
+	if srv.config.DNS.Consul != nil {
+		srv.extensions[service.DNSConsul] = srv.config.DNS.Consul
 	}
 
 	srv.workflow = initWorkflow()
@@ -74,7 +76,7 @@ func initServer() (server, error) {
 	// init flowEntries table
 	srv.flowEntries = newFlowEntries()
 	if err := srv.flowEntries.loadFile(srv.config.Core.FlowEntriesFile); err != nil {
-		logger.DefaultLogger().Errorf("Could not load entries from file: %v", err)
+		logger.DefaultLogger().Errorf("Could not load entries from ipalloc: %v", err)
 
 	}
 
@@ -127,19 +129,20 @@ func (s *server) start() {
 		go func() {
 			err := curExtension.Start(extensionChan.receive, extensionChan.send)
 			if err != nil {
-				logger.DefaultLogger().Errorf("Cannot start extension %v: %v\n", name, err)
+				logger.DefaultLogger().Errorf("Cannot start extension %v: %v\n", extensionChan.name, err)
 			}
 		}()
 	}
 	// handle SIGs and extensions clean shutdown
 	go func() {
 		for range signalChan {
-			logger.DefaultLogger().Println("Received interrupt, saving flow entries to file")
+			logger.DefaultLogger().Println("Received interrupt, saving flow entries to ipalloc")
 			if err := s.flowEntries.save("./share/flowentries.db"); err != nil {
-				logger.DefaultLogger().Error()
+				logger.DefaultLogger().Error(err.Error())
 			}
-			logger.DefaultLogger().Println("Stopping extensions...")
-			for _, extension := range s.extensions {
+
+			for name, extension := range s.extensions {
+				logger.DefaultLogger().Warnf("Stopping extension %v", name)
 				extension.Stop()
 			}
 			stopExtensions <- true
@@ -200,9 +203,9 @@ func (s *server) flowControl() {
 			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
 
 			if reverse {
-				msg.Action = msgDeleteAction
+				msg.Action = service.MsgDeleteAction
 			} else {
-				msg.Action = msgAddAction
+				msg.Action = service.MsgAddAction
 			}
 			msg.Service = v.Service
 

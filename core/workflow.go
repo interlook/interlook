@@ -13,16 +13,9 @@ import (
 	"github.com/bhuisgen/interlook/service"
 )
 
-// TODO: move msg related status to service pkg.
 const (
-	flowDeployedState      = "deployed"
-	flowUndeployedState    = "undeployed"
-	flowDeployState        = "deploy"
-	flowUndeployState      = "undeploy"
-	msgAddAction           = "add"
-	msgUpdateAction        = "update"
-	msgDeleteAction        = "delete"
-	msgUpdateFromExtension = "extUpdate"
+	flowDeployedState   = "deployed"
+	flowUndeployedState = "undeployed"
 )
 
 // workflow holds the sequence of "steps" an item must follow to be deployed or undeployed
@@ -53,9 +46,7 @@ func (w workflow) getNextStep(step string, reverse bool) (next string, err error
 		return "", errors.New("could not find next step in workflow")
 	}
 	if strings.Contains(next, "provider.") {
-		logger.DefaultLogger().Debugf("##### next:%v", next)
 		next, _ = w.getNextStep(next, reverse)
-		logger.DefaultLogger().Debugf("##### sub next:%v", next)
 	}
 	return next, nil
 }
@@ -66,6 +57,8 @@ type flowentry struct {
 	//CurrentState string `json:"current_state,omitempty"`
 	// Indicates if an extension is currently working on the item
 	WorkInProgress bool `json:"work_in_progress,omitempty"`
+	// time the entry was set in WIP (sent to extension)
+	WIPTime time.Time
 	// Current state of the item
 	State string `json:"state,omitempty"`
 	// Desired service state (deployed or undeployed)
@@ -89,8 +82,8 @@ func makeNewFlowEntry() flowentry {
 
 func (we *flowentry) isStateAsWanted(action string) bool {
 	if we.ExpectedState == we.State &&
-		((we.State == flowDeployedState && action == msgAddAction) ||
-			(we.State == flowUndeployedState && action == msgDeleteAction)) {
+		((we.State == flowDeployedState && action == service.MsgAddAction) ||
+			(we.State == flowUndeployedState && action == service.MsgDeleteAction)) {
 		logger.DefaultLogger().Debug("service state is OK")
 		return true
 	}
@@ -120,6 +113,7 @@ func (f *flowEntries) getServiceByName(name string) (*flowentry, error) {
 func (f *flowEntries) prepareForNextStep(entry, step string, reverse bool) {
 	f.Lock()
 	f.M[entry].WorkInProgress = true
+	f.M[entry].WIPTime = time.Now()
 	f.M[entry].State = step
 	f.Unlock()
 }
@@ -127,6 +121,7 @@ func (f *flowEntries) prepareForNextStep(entry, step string, reverse bool) {
 func (f *flowEntries) closeEntry(key string, reverse bool) {
 	f.Lock()
 	f.M[key].WorkInProgress = false
+	f.M[key].WIPTime = time.Time{}
 	if reverse {
 		f.M[key].State = flowUndeployedState
 	} else {

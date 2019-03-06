@@ -7,7 +7,7 @@ import (
 	"github.com/bhuisgen/interlook/service"
 )
 
-// Extension holds the provider file configuration
+// Extension holds the provider ipalloc configuration
 type Extension struct {
 	Name           string   `yaml:"name"`
 	Endpoint       string   `yaml:"endpoint"`

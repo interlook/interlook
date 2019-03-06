@@ -18,7 +18,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-// Extension holds the provider file configuration
+// Extension holds the provider ipalloc configuration
 type Extension struct {
 	Name           string   `yaml:"name"`
 	Endpoint       string   `yaml:"endpoint"`
@@ -39,7 +39,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	msg.Service.Provider = "docker"
 	msg.Service.Hosts = append(msg.Service.Hosts, "172.1.1.2")
 	msg.Service.Name = "test.docker.com"
-	msg.Service.DNSName = "mytest.docker.com"
+	msg.Service.DNSName = "test.docker.com"
 	msg.Service.Port = 8080
 	msg.Service.TLS = false
 
@@ -48,12 +48,8 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	time.Sleep(1 * time.Second)
 	send <- msg
 
-	time.Sleep(15 * time.Second)
+	time.Sleep(20 * time.Second)
 	msg.Action = "delete"
-	send <- msg
-
-	time.Sleep(10 * time.Second)
-	msg.Action = "add"
 	send <- msg
 
 	for {
