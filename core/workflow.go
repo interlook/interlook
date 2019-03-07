@@ -45,14 +45,15 @@ func (w workflow) getNextStep(step string, reverse bool) (next string, err error
 	if next, ok = w[index]; !ok {
 		return "", errors.New("could not find next step in workflow")
 	}
+	// we do not send messages to providers
 	if strings.Contains(next, "provider.") {
 		next, _ = w.getNextStep(next, reverse)
 	}
 	return next, nil
 }
 
-// flowentry represents a tracked service
-type flowentry struct {
+// flowEntry represents a tracked service
+type flowEntry struct {
 	// current step in the workflow
 	//CurrentState string `json:"current_state,omitempty"`
 	// Indicates if an extension is currently working on the item
@@ -74,13 +75,13 @@ type flowentry struct {
 	Service    service.Service `json:"service,omitempty"`
 }
 
-func makeNewFlowEntry() flowentry {
-	var ne flowentry
+func makeNewFlowEntry() flowEntry {
+	var ne flowEntry
 	ne.TimeDetected = time.Now()
 	return ne
 }
 
-func (we *flowentry) isStateAsWanted(action string) bool {
+func (we *flowEntry) isStateAsWanted(action string) bool {
 	if we.ExpectedState == we.State &&
 		((we.State == flowDeployedState && action == service.MsgAddAction) ||
 			(we.State == flowUndeployedState && action == service.MsgDeleteAction)) {
@@ -93,16 +94,16 @@ func (we *flowentry) isStateAsWanted(action string) bool {
 // flowEntries holds the table of tracked services
 type flowEntries struct {
 	sync.Mutex
-	M map[string]*flowentry `json:"entries,omitempty"`
+	M map[string]*flowEntry `json:"entries,omitempty"`
 }
 
 func newFlowEntries() *flowEntries {
 	fe := new(flowEntries)
-	fe.M = make(map[string]*flowentry)
+	fe.M = make(map[string]*flowEntry)
 	return fe
 }
 
-func (f *flowEntries) getServiceByName(name string) (*flowentry, error) {
+func (f *flowEntries) getServiceByName(name string) (*flowEntry, error) {
 	res, ok := f.M[name]
 	if !ok {
 		return res, errors.New("No entry found")

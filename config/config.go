@@ -21,7 +21,7 @@ type ServerConfiguration struct {
 		LogFile           string        `yaml:"logFile"`
 		Workflow          string        `yaml:"workflow"`
 		CheckFlowInterval time.Duration `yaml:"checkFlowInterval"`
-		FlowEntriesFile   string        `yaml:"flowEntriesFile""`
+		FlowEntriesFile   string        `yaml:"flowEntriesFile"`
 	} `yaml:"core"`
 	Provider struct {
 		Docker     *docker.Extension     `yaml:"docker,omitempty"`

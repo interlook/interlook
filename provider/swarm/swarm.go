@@ -33,7 +33,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	msg.Service.Provider = "swarm"
 	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
 	msg.Service.Name = "test.swarm.com"
-	msg.Service.DNSName = "test.swarm.com"
+	msg.Service.DNSAliases = []string{"test.swarm.com"}
 	msg.Service.Port = 8080
 	msg.Service.TLS = true
 	for {

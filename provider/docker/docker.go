@@ -39,7 +39,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	msg.Service.Provider = "docker"
 	msg.Service.Hosts = append(msg.Service.Hosts, "172.1.1.2")
 	msg.Service.Name = "test.docker.com"
-	msg.Service.DNSName = "test.docker.com"
+	msg.Service.DNSAliases = []string{"test.docker.com", "mytest.docker.com"}
 	msg.Service.Port = 8080
 	msg.Service.TLS = false
 
@@ -49,8 +49,8 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	send <- msg
 
 	time.Sleep(20 * time.Second)
-	msg.Action = "delete"
-	send <- msg
+	//msg.Action = "delete"
+	//send <- msg
 
 	for {
 		time.Sleep(180 * time.Second)

@@ -29,17 +29,15 @@ type Message struct {
 
 // Service holds the containerized service
 type Service struct {
-	Provider string `json:"provider,omitempty"`
-	Name     string `json:"name,omitempty"`
-	//ID       string   `json:"internal_id,omitempty"`
-	Hosts    []string `json:"hosts,omitempty"`
-	Port     int      `json:"port,omitempty"`
-	TLS      bool     `json:"tls,omitempty"`
-	PublicIP string   `json:"public_ip,omitempty"`
-	// TODO: support multiple dns names
-	DNSName string `json:"dns_name,omitempty"`
-	Info    string `json:"info,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Provider   string   `json:"provider,omitempty"`
+	Name       string   `json:"name,omitempty"`
+	Hosts      []string `json:"hosts,omitempty"`
+	Port       int      `json:"port,omitempty"`
+	TLS        bool     `json:"tls,omitempty"`
+	PublicIP   string   `json:"public_ip,omitempty"`
+	DNSAliases []string `json:"dns_name,omitempty"`
+	Info       string   `json:"info,omitempty"`
+	Error      string   `json:"error,omitempty"`
 }
 
 // IsSameThan compares given service definition received from provider
@@ -48,7 +46,7 @@ type Service struct {
 // returns a list of fields that differ
 func (s *Service) IsSameThan(to Service) (bool, []string) {
 	var diff []string
-	if s.DNSName != to.DNSName {
+	if !reflect.DeepEqual(s.DNSAliases, to.DNSAliases) {
 		diff = append(diff, "DNSNames")
 	}
 	if s.Port != to.Port {
