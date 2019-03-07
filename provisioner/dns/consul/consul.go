@@ -39,39 +39,57 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 			case service.MsgDeleteAction:
 				logger.DefaultLogger().Debugf("request to delete dns for %v", msg.Service.Name)
 				msg.Action = service.MsgUpdateFromExtension
-				if err := c.deregister(msg.Service.DNSName); err != nil {
-					msg.Error = err.Error()
+				for _, dnsAlias := range msg.Service.DNSAliases {
+					if err := c.deregister(dnsAlias); err != nil {
+						msg.Error = err.Error()
+					}
+					send <- msg
 				}
-				send <- msg
 
 			default:
 				msg.Action = service.MsgUpdateFromExtension
-
-				registration := api.CatalogRegistration{
-					Node:     msg.Service.DNSName,
-					Address:  msg.Service.PublicIP,
-					NodeMeta: map[string]string{"external-node": "true"},
-					Service: &api.AgentService{Service: msg.Service.DNSName,
-						Address: msg.Service.DNSName,
-						Port:    msg.Service.Port},
-					Checks: api.HealthChecks{
-						&api.HealthCheck{
-							Status: "passing",
-							Name:   "basic-tcp-check",
-							Definition: api.HealthCheckDefinition{
-								Interval: 10000,
+				var servicePort int
+				if msg.Service.TLS {
+					servicePort = 443
+				} else {
+					servicePort = 80
+				}
+				for _, dnsAlias := range msg.Service.DNSAliases {
+					alreadyRegistered, err := c.isServiceExist(dnsAlias)
+					if err != nil {
+						logger.DefaultLogger().Errorf("error %v getting current dns definition for %v", err.Error(), dnsAlias)
+					}
+					if alreadyRegistered {
+						if err := c.deregister(dnsAlias); err != nil {
+							logger.DefaultLogger().Errorf("Error deregistering %v: %v", dnsAlias, err.Error())
+						}
+					}
+					registration := api.CatalogRegistration{
+						Node:     dnsAlias,
+						Address:  msg.Service.PublicIP,
+						NodeMeta: map[string]string{"external-node": "true"},
+						Service: &api.AgentService{Service: dnsAlias,
+							Address: dnsAlias,
+							Port:    servicePort},
+						Checks: api.HealthChecks{
+							&api.HealthCheck{
+								Status: "passing",
+								Name:   "basic-tcp-check",
+								Definition: api.HealthCheckDefinition{
+									Interval: 10000,
+								},
 							},
 						},
-					},
-				}
+					}
 
-				_, err = c.client.Catalog().Register(&registration, nil)
-				if err != nil {
-					msg.Error = err.Error()
+					_, err = c.client.Catalog().Register(&registration, nil)
+					if err != nil {
+						msg.Error = err.Error()
+						send <- msg
+						continue
+					}
 					send <- msg
-					continue
 				}
-				send <- msg
 
 			}
 		case <-c.shutdown:

@@ -48,7 +48,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 		}
 		f.Lock()
 		f.M[msg.Service.Name].Service.Hosts = msg.Service.Hosts
-		f.M[msg.Service.Name].Service.DNSName = msg.Service.DNSName
+		f.M[msg.Service.Name].Service.DNSAliases = msg.Service.DNSAliases
 		f.M[msg.Service.Name].Service.Port = msg.Service.Port
 		f.M[msg.Service.Name].Service.TLS = msg.Service.TLS
 		f.M[msg.Service.Name].State = msg.Sender
