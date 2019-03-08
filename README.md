@@ -25,9 +25,9 @@ Currently supported Provisioners:
  * IP:
     * ipalloc (an embedded simple local IPAM)
  * DNS:
-    * Consul (DNS records will contain Consul specific suffix: .service.consul )
+    * Consul (DNS records will contain Consul specific suffix: .service.domain )
  * Load Balancer:
-    * ~~F5 Big IP~~ 
+    * ~~F5 Big-IP~~ 
     * ~~Envoy proxy~~ 
 
 ## Doc

@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/bhuisgen/interlook/provisioner/dns/consul"
+	"github.com/bhuisgen/interlook/provisioner/loadbalancer/kemplm"
 	"io/ioutil"
 	"time"
 
@@ -35,6 +36,7 @@ type ServerConfiguration struct {
 		Consul *consul.Consul `yaml:"consul,omitempty"`
 	} `yaml:"dns,omitempty"`
 	LoadBalancer struct {
+		KempLM *kemplm.KempLM `yaml:"kemplm,omitempty"`
 	} `yaml:"loadbalancer,omitempty"`
 }
 
