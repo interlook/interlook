@@ -10,6 +10,7 @@ const (
 	ProviderKubernetes = "provider.kubernetes"
 	DNSConsul          = "dns.consul"
 	LBf5               = "lb.f5"
+	LBKempLM           = "lb.kemplm"
 	//define message actions
 	MsgAddAction           = "add"
 	MsgUpdateFromExtension = "extUpdate"

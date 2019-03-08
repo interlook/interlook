@@ -70,6 +70,9 @@ func initServer() (server, error) {
 	if srv.config.DNS.Consul != nil {
 		srv.extensions[service.DNSConsul] = srv.config.DNS.Consul
 	}
+	if srv.config.LoadBalancer.KempLM != nil {
+		srv.extensions[service.LBKempLM] = srv.config.LoadBalancer.KempLM
+	}
 
 	srv.workflow = initWorkflow()
 

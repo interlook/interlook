@@ -3,7 +3,7 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : /toto.log
-  workflow: provider.docker,ipam.ipalloc,dns.consul
+  workflow: provider.docker,ipam.ipalloc,dns.consul,lb.kemplm
   checkFlowInterval: 2s
   flowEntriesFile: ./share/flowentries.db
 provider:
@@ -22,7 +22,7 @@ ipam:
   ipalloc:
     ip_start:
     ip_end:
-    network_cidr: 192.168.1.0/24
+    network_cidr: 192.168.99.0/24
     db_file: ./share/conf/allocated.db
 dns:
   consul:
@@ -32,4 +32,8 @@ dns:
 loadbalancer:
   f5:
     endpoint: http://myf5.local:10000
-    token: nvajnfva-avsv  
+    token: nvajnfva-avsv
+  kemplm:
+    endpoint: https://192.168.99.2
+    username: api
+    password: apiPassw0rd
