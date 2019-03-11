@@ -46,8 +46,9 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	return nil
 }
 
-func (p *Extension) Stop() {
+func (p *Extension) Stop() error {
 	logger.DefaultLogger().Printf("Stopping %v on %v\n", p.Name, p.Endpoint)
+	return nil
 }
 
 // FIXME: will Init function initialize the Provider (from Extension)?

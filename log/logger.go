@@ -33,7 +33,7 @@ func init() {
 	logrus.SetFormatter(&logrus.TextFormatter{})
 	logLevel, _ := logrus.ParseLevel("DEBUG")
 	logrus.SetLevel(logLevel)
-	logrus.Info("logger initialized")
+	//logrus.Info("logger initialized")
 }
 
 // SetOutput sets the standard logger output.

@@ -1,28 +1,38 @@
 package core
 
-// TODO: proper init from "main"
-// TODO: flags and or env var. Minimum -c configfile -l loglevel
 import (
+	"flag"
 	"github.com/bhuisgen/interlook/config"
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
+	"sync"
 	"time"
 
 	"os"
 	"os/signal"
 )
 
+var (
+	srv        server
+	configFile string
+	Version    string
+)
+
 // holds the srv config
-// Keeps a list of configured and started providers
+// Keeps a list of configured and started extensions
 type server struct {
-	config            *config.ServerConfiguration
-	sigChannel        chan os.Signal
+	config  *config.ServerConfiguration
+	signals chan os.Signal
+	//    extensionShutdown chan bool
+	//shutdownOK  chan bool
+	coreShutdown      chan bool
 	extensions        map[string]Extension
 	extensionChannels map[string]*extensionChannels
 	workflow          workflow
 	flowEntries       *flowEntries
 	flowChan          chan service.Message
 	flowControlTicker *time.Ticker
+	wg                sync.WaitGroup
 }
 
 // extensionChannels holds the "activated" extensions's channels
@@ -40,17 +50,23 @@ func newExtensionChannels(name string) *extensionChannels {
 	return p
 }
 
-var srv server
-
 func initServer() (server, error) {
 	var err error
-	srv.config, err = config.ReadConfig("./share/conf/config.yml")
+
+	flag.StringVar(&configFile, "conf", "", "Interlook configuration file")
+	flag.Parse()
+
+	//  srv.extensionShutdown = make(chan bool)
+	srv.coreShutdown = make(chan bool)
+	srv.signals = make(chan os.Signal, 1)
+
+	srv.config, err = config.ReadConfig(configFile)
 	if err != nil {
 		return srv, err
 	}
 	srv.extensions = make(map[string]Extension)
 	srv.extensionChannels = make(map[string]*extensionChannels)
-	srv.sigChannel = make(chan os.Signal)
+	srv.signals = make(chan os.Signal)
 	srv.flowChan = make(chan service.Message)
 	srv.flowControlTicker = time.NewTicker(srv.config.Core.CheckFlowInterval)
 
@@ -79,92 +95,104 @@ func initServer() (server, error) {
 	// init flowEntries table
 	srv.flowEntries = newFlowEntries()
 	if err := srv.flowEntries.loadFile(srv.config.Core.FlowEntriesFile); err != nil {
-		logger.DefaultLogger().Errorf("Could not load entries from ipalloc: %v", err)
+		logger.DefaultLogger().Errorf("Could not load entries from file: %v", err)
 
 	}
 
 	return srv, nil
 }
 
+// Start initialize server and run it
 func Start() {
-	Init()
-}
-
-// Init init and start the srv server
-func Init() {
-	logger.DefaultLogger().Printf("Starting server")
+	logger.DefaultLogger().Printf("Starting Interlook core ", Version)
 	core, err := initServer()
 	if err != nil {
 		logger.DefaultLogger().Fatal(err)
 	}
-	core.start()
+	core.run()
 }
 
-func (s *server) start() {
-	// start http server
-	go s.startHTTP()
+func (s *server) run() {
+	signal.Notify(s.signals, os.Interrupt)
+	signal.Notify(s.signals, os.Kill)
 
-	// start flowControl
-	go func() {
-		for range s.flowControlTicker.C {
-			s.flowControl()
-		}
-	}()
-
-	// create channel for post exit cleanup
-	stopExtensions := make(chan bool)
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	signal.Notify(signalChan, os.Kill)
+	// run flowControl
+	s.wg.Add(1)
+	go s.runFlowControl()
 
 	// start all configured extensions
+	// for each one, starts a dedicated listener goroutine
 	for name, extension := range srv.extensions {
 		logger.DefaultLogger().Printf("adding %v to extensionChannels", name)
 		extensionChannels := newExtensionChannels(name)
 		s.extensionChannels[name] = extensionChannels
 
-		// start the extension's listener
+		// run the extension's listener
 		go s.extensionListener(extensionChannels)
 
 		curExtension := extension
 		extensionChan := extensionChannels
-
+		s.wg.Add(1)
 		go func() {
 			err := curExtension.Start(extensionChan.receive, extensionChan.send)
 			if err != nil {
-				logger.DefaultLogger().Errorf("Cannot start extension %v: %v\n", extensionChan.name, err)
+				logger.DefaultLogger().Fatalf("Cannot run extension %v: %v\n", extensionChan.name, err)
 			}
+			logger.DefaultLogger().Debugf("###Extension %v stopped", extensionChan.name)
+			s.wg.Done()
 		}()
 	}
-	// handle SIGs and extensions clean shutdown
-	go func() {
-		for range signalChan {
-			logger.DefaultLogger().Println("Received interrupt, saving flow entries to ipalloc")
-			if err := s.flowEntries.save("./share/flowentries.db"); err != nil {
-				logger.DefaultLogger().Error(err.Error())
-			}
 
+	// run http core
+	go s.startHTTP()
+
+	// handle SIGs and extensions clean extensionShutdown
+	go func() {
+		for range s.signals {
 			for name, extension := range s.extensions {
 				logger.DefaultLogger().Warnf("Stopping extension %v", name)
 				extension.Stop()
 			}
-			stopExtensions <- true
+			logger.DefaultLogger().Debug("send true to coreShutdown")
+			s.coreShutdown <- true
+
 		}
 	}()
-	<-stopExtensions
+	logger.DefaultLogger().Debug("waiting for wg")
+	s.wg.Wait()
+	logger.DefaultLogger().Debug("wg ok")
+	//<-s.coreShutdown
 }
 
 // extensionListener gets messages from extensions and send them to workflow
 // fill out message's Sender
 func (s *server) extensionListener(extension *extensionChannels) {
-	logger.DefaultLogger().Debugf("ExtensionListener is listening for %v", extension.name)
+	logger.DefaultLogger().Debugf("Listening for %v messages", extension.name)
 	for {
 		newMessage := <-extension.send
 		newMessage.Sender = extension.name
 		// inject message/service to workflow
-		logger.DefaultLogger().Debugf("ExtensionListener %v received message, sending to flow control\n", extension.name)
+		logger.DefaultLogger().Debugf("Received message from %v, sending to flow control\n", extension.name)
 		if err := srv.flowEntries.mergeMessage(newMessage); err != nil {
 			logger.DefaultLogger().Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
+		}
+	}
+}
+
+func (s *server) runFlowControl() {
+	for {
+		select {
+		case <-s.coreShutdown:
+			logger.DefaultLogger().Warn("Stopping FlowControl")
+			if err := s.flowEntries.save(s.config.Core.FlowEntriesFile); err != nil {
+				logger.DefaultLogger().Error(err.Error())
+			}
+			s.wg.Done()
+			return
+
+		case <-s.flowControlTicker.C:
+			logger.DefaultLogger().Debug("Running flowControl")
+			s.flowControl()
 		}
 	}
 }
@@ -173,8 +201,6 @@ func (s *server) extensionListener(extension *extensionChannels) {
 // triggers required action(s) to bring service state
 // to desired state (deployed or undeployed)
 func (s *server) flowControl() {
-	logger.DefaultLogger().Debug("Running flowControl")
-
 	for k, v := range s.flowEntries.M {
 		if v.State != v.ExpectedState && !v.WorkInProgress {
 			var msg service.Message
@@ -211,7 +237,6 @@ func (s *server) flowControl() {
 				msg.Action = service.MsgAddAction
 			}
 			msg.Service = v.Service
-
 			// get the extension channel to write message to
 			ext, ok := s.extensionChannels[nextStep]
 			if !ok {

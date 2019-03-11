@@ -29,6 +29,7 @@ type Extension struct {
 	Watch          bool     `yaml:"watch"`
 	WatchInterval  string   `yaml:"watchInterval"`
 	UpdateInterval string   `yaml:"updateInterval"`
+	close          chan bool
 }
 
 // Start initialize and start sending events to core
@@ -37,24 +38,25 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	var msg service.Message
 	msg.Action = "add" // add, remove, update, check
 	msg.Service.Provider = "docker"
-	msg.Service.Hosts = append(msg.Service.Hosts, "172.1.1.2")
+	msg.Service.Hosts = append(msg.Service.Hosts, "10.32.2.99")
 	msg.Service.Name = "test.docker.com"
 	msg.Service.DNSAliases = []string{"test.docker.com", "mytest.docker.com"}
 	msg.Service.Port = 8080
 	msg.Service.TLS = false
 
-	//push <- msg
-
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	send <- msg
 
-	time.Sleep(20 * time.Second)
-	//msg.Action = "delete"
-	//send <- msg
-
 	for {
-		time.Sleep(180 * time.Second)
+		select {
+		case <-p.close:
+			logger.DefaultLogger().Debug("stopping docker provider")
+			return nil
+		case msg := <-receive:
+			logger.DefaultLogger().Debugf("docker got msg", msg)
+		}
 	}
+	logger.DefaultLogger().Warn("@@@@ exited docker")
 	// do stuff
 	//push <- msg
 	return nil
@@ -62,8 +64,10 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 }
 
 // Stop stops the provider
-func (p *Extension) Stop() {
-	logger.DefaultLogger().Printf("Stopping %v\n", p.Name)
+func (p *Extension) Stop() error {
+	logger.DefaultLogger().Debug("Stopping docker")
+	p.close <- true
+	return nil
 }
 
 type Provider struct {

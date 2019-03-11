@@ -110,9 +110,10 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	}
 }
 
-func (p *Extension) Stop() {
+func (p *Extension) Stop() error {
 	p.shutdown <- true
 	logger.DefaultLogger().Warn("extension ipam.ipalloc down")
+	return nil
 }
 
 func (p *Extension) deleteService(name string) error {

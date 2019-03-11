@@ -40,4 +40,4 @@ Currently supported Provisioners:
 
 Boris HUISGEN <bhuisgen@hbis.fr>
 
-Michael Champagne @mch1307
+Michael Champagne <mch1307@gmail.com>

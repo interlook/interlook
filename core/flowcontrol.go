@@ -8,7 +8,6 @@ import (
 )
 
 // mergeMessage manages messages received from extensions
-// TODO: code review
 func (f *flowEntries) mergeMessage(msg service.Message) error {
 	logger.DefaultLogger().Debugf("mergeMessage received %v\n", msg)
 	var serviceExist, serviceUnchanged, serviceStateOK bool
@@ -29,32 +28,31 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 	}
 
 	if serviceUnchanged && msg.Action == service.MsgAddAction && serviceStateOK {
-		logger.DefaultLogger().Debugf("Service %v already defined\n", msg.Service.Name)
+		logger.DefaultLogger().Debugf("Service %v already in desired state\n", msg.Service.Name)
 		return nil
 	}
 
 	switch msg.Action {
 	case service.MsgAddAction:
-		if !serviceExist {
-			ne := makeNewFlowEntry()
-			ne.Service = msg.Service
-			ne.ExpectedState = flowDeployedState
-			ne.State = msg.Sender
-			f.Lock()
-			f.M[msg.Service.Name] = &ne
-			f.Unlock()
-			logger.DefaultLogger().Debugf("mergeToFlow added new service entry %v", f.M[msg.Service.Name])
-			return nil
-		}
 		f.Lock()
-		f.M[msg.Service.Name].Service.Hosts = msg.Service.Hosts
-		f.M[msg.Service.Name].Service.DNSAliases = msg.Service.DNSAliases
-		f.M[msg.Service.Name].Service.Port = msg.Service.Port
-		f.M[msg.Service.Name].Service.TLS = msg.Service.TLS
+		defer f.Unlock()
+		ne := makeNewFlowEntry()
+		ne.Service = msg.Service
+		f.M[msg.Service.Name] = &ne
 		f.M[msg.Service.Name].State = msg.Sender
 		f.M[msg.Service.Name].ExpectedState = flowDeployedState
-		f.M[msg.Service.Name].LastUpdate = time.Now()
-		f.Unlock()
+
+		if serviceExist {
+			f.M[msg.Service.Name].LastUpdate = time.Now()
+		}
+
+		f.M[msg.Service.Name].Service = service.Service{
+			Name:       msg.Service.Name,
+			Hosts:      msg.Service.Hosts,
+			DNSAliases: msg.Service.DNSAliases,
+			Port:       msg.Service.Port,
+			TLS:        msg.Service.TLS,
+		}
 
 	case service.MsgUpdateFromExtension:
 		logger.DefaultLogger().Debugf("Got msg from extension")
@@ -77,5 +75,6 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 		logger.DefaultLogger().Warnf("mergeToFlow could not handle %v action\n", msg.Action)
 		return errors.New("Unhandled action")
 	}
+
 	return nil
 }

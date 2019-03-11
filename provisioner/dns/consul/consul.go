@@ -98,9 +98,10 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 	}
 }
 
-func (c *Consul) Stop() {
+func (c *Consul) Stop() error {
 	c.shutdown <- true
 	logger.DefaultLogger().Warn("extension dns.consul down")
+	return nil
 }
 
 func (c *Consul) isServiceExist(name string) (bool, error) {

@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/bhuisgen/interlook/log"
 	"io/ioutil"
 	"os"
@@ -106,7 +107,7 @@ func newFlowEntries() *flowEntries {
 func (f *flowEntries) getServiceByName(name string) (*flowEntry, error) {
 	res, ok := f.M[name]
 	if !ok {
-		return res, errors.New("No entry found")
+		return res, errors.New(fmt.Sprintf("No entry found for %v", name))
 	}
 	return res, nil
 }
@@ -171,7 +172,7 @@ func initWorkflow() workflow {
 	for k, v := range strings.Split(srv.config.Core.Workflow, ",") {
 		wf[k+1] = v
 	}
-	// add start and end steps to workflow
+	// add run and end steps to workflow
 	wf[0] = flowUndeployedState
 	wf[len(wf)] = flowDeployedState
 	return wf

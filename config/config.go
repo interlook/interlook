@@ -40,7 +40,7 @@ type ServerConfiguration struct {
 	} `yaml:"loadbalancer,omitempty"`
 }
 
-// ReadConfig parse the configuration ipalloc
+// ReadConfig parse the configuration
 func ReadConfig(file string) (*ServerConfiguration, error) {
 	var cfg ServerConfiguration
 	f, err := ioutil.ReadFile(file)

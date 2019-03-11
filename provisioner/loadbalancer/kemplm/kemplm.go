@@ -3,6 +3,7 @@ package kemplm
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
 	"io/ioutil"
@@ -22,7 +23,9 @@ type KempLM struct {
 
 func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Message) error {
 	k.httpClient = makeHttpClient()
-	// TODO: add connection test
+	if err := k.testConnection(); err != nil {
+		return err
+	}
 
 	k.shutdown = make(chan bool)
 
@@ -66,8 +69,26 @@ func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Messa
 	}
 }
 
-func (k *KempLM) Stop() {
+func (k *KempLM) Stop() error {
 	k.shutdown <- true
+	return nil
+}
+
+func (k *KempLM) testConnection() error {
+	req, err := k.newAuthRequest(http.MethodGet, k.Endpoint+"/access/listvs")
+	if err != nil {
+		return err
+	}
+
+	_, httpCode, err := k.executeRequest(req)
+	if err != nil {
+		return err
+	}
+	if httpCode != 200 {
+		return errors.New("Could not establish connection")
+	}
+
+	return nil
 }
 
 func (k *KempLM) deleteVS(msg service.Message) error {
@@ -76,15 +97,18 @@ func (k *KempLM) deleteVS(msg service.Message) error {
 		return err
 	}
 
-	_, err = k.executeRequest(req)
+	_, httpCode, err := k.executeRequest(req)
 	if err != nil {
 		return err
+	}
+	if httpCode != 200 {
+		return errors.New("Could not delete VS")
 	}
 
 	return nil
 }
 
-func (k *KempLM) isRSDefined(msg service.Message) (bool, error) {
+func (k *KempLM) isRSDefined(msg service.Message, hostIndex int) (bool, error) {
 	req, err := k.newVSRequest("/access/listrs", msg)
 	if err != nil {
 		return false, err
@@ -96,7 +120,7 @@ func (k *KempLM) isRSDefined(msg service.Message) (bool, error) {
 
 	req.URL.RawQuery = q.Encode()
 
-	_, err = k.executeRequest(req)
+	_, _, err = k.executeRequest(req)
 	if err != nil {
 		return false, err
 	}
@@ -105,35 +129,51 @@ func (k *KempLM) isRSDefined(msg service.Message) (bool, error) {
 }
 
 func (k *KempLM) isVSDefined(msg service.Message) (bool, error) {
-	req, err := k.newVSRequest("/access/listvs", msg)
+	req, err := k.newVSRequest("/access/showvs", msg)
 	if err != nil {
 		return false, err
 	}
 
-	_, err = k.executeRequest(req)
+	_, httpCode, err := k.executeRequest(req)
 	if err != nil {
 		return false, err
+	}
+	switch httpCode {
+	case 200:
+		return true, nil
+	case 422:
+		return false, nil
+	default:
+		return false, errors.New(fmt.Sprintf("Unexpected http exit code %v", httpCode))
 	}
 
 	return true, nil
 }
 
 func (k *KempLM) addVS(msg service.Message) error {
-	req, err := k.newVSRequest("/access/addvs", msg)
+
+	exist, err := k.isVSDefined(msg)
 	if err != nil {
 		return err
 	}
 
-	q := req.URL.Query()
-	q.Add("nickname", msg.Service.Name)
-	q.Add("vstype", "gen")
-	q.Add("checktype", "icmp")
+	if !exist {
+		req, err := k.newVSRequest("/access/addvs", msg)
+		if err != nil {
+			return err
+		}
 
-	req.URL.RawQuery = q.Encode()
+		q := req.URL.Query()
+		q.Add("nickname", msg.Service.Name)
+		q.Add("vstype", "gen")
+		q.Add("checktype", "icmp")
 
-	_, err = k.executeRequest(req)
-	if err != nil {
-		return err
+		req.URL.RawQuery = q.Encode()
+
+		_, _, err = k.executeRequest(req)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -141,6 +181,11 @@ func (k *KempLM) addVS(msg service.Message) error {
 
 func (k *KempLM) addRS(msg service.Message) error {
 	for _, host := range msg.Service.Hosts {
+		//rsExist, err := k.isRSDefined(msg, i)
+		//if err != nil {
+		//    return err
+		//}
+		//if !rsExist {
 		req, err := k.newVSRequest("/access/addrs", msg)
 		if err != nil {
 			return err
@@ -157,10 +202,11 @@ func (k *KempLM) addRS(msg service.Message) error {
 			return err
 		}
 
-		_, err = k.executeRequest(req)
+		_, _, err = k.executeRequest(req)
 		if err != nil {
 			return err
 		}
+		// }
 	}
 	return nil
 }
@@ -213,26 +259,23 @@ func (k *KempLM) newVSRequest(path string, msg service.Message) (*http.Request, 
 }
 
 // Executes the raw request, does not parse Vault response
-func (k *KempLM) executeRequest(r *http.Request) ([]byte, error) {
+func (k *KempLM) executeRequest(r *http.Request) (body []byte, statusCode int, err error) {
+	//var err error
 	logger.DefaultLogger().Debugf("exec url: %v", r.URL.String())
 
 	res, err := k.httpClient.Do(r)
 	if err != nil {
 		logger.DefaultLogger().Error(err.Error())
-		return nil, err
+		return nil, 0, err
 	}
 	defer res.Body.Close()
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
 		logger.DefaultLogger().Debugf(err.Error())
-		return body, err
+		return body, res.StatusCode, err
 	}
 
-	if res.StatusCode != http.StatusOK {
-		logger.DefaultLogger().Debugf(res.Status)
-		return body, errors.New("non 200 return code ")
-	}
+	return body, res.StatusCode, nil
 
-	return body, nil
 }
