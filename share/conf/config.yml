@@ -2,7 +2,7 @@
 core:
   logLevel: DEBUG
   listenPort: 8080
-  logFile : /toto.log
+  logFile : ./share/interlook.log
   workflow: provider.docker,ipam.ipalloc,dns.consul,lb.kemplm
   checkFlowInterval: 2s
   flowEntriesFile: ./share/flowentries.db
@@ -20,19 +20,14 @@ provider:
     updateInterval: 15s
 ipam:
   ipalloc:
-    ip_start:
-    ip_end:
     network_cidr: 192.168.99.0/24
     db_file: ./share/conf/allocated.db
 dns:
   consul:
     url: http://127.0.0.1:8500
-    domain: docker.com
+    domain:
     token:
-loadbalancer:
-  f5:
-    endpoint: http://myf5.local:10000
-    token: nvajnfva-avsv
+lb:
   kemplm:
     endpoint: https://192.168.99.2
     username: api

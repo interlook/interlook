@@ -30,8 +30,10 @@ type server struct {
 	flowEntries       *flowEntries
 	flowChan          chan service.Message
 	flowControlTicker *time.Ticker
-	coreWG            sync.WaitGroup
-	extensionsWG      sync.WaitGroup
+	// waitgroup for core processes sync
+	coreWG sync.WaitGroup
+	// waitgroup for extensions sync
+	extensionsWG sync.WaitGroup
 }
 
 func initServer() (server, error) {
@@ -54,6 +56,9 @@ func initServer() (server, error) {
 	srv.flowControlTicker = time.NewTicker(srv.config.Core.CheckFlowInterval)
 
 	// add configured extensions
+	// TODO: check if this can be done dynamically with reflection
+	// TODO: provider should not be a normal extension as it is the first flow step
+	// check only one is active
 	if srv.config.Provider.Docker != nil {
 		srv.extensions[service.ProviderDocker] = srv.config.Provider.Docker
 	}
