@@ -37,7 +37,7 @@ type ServerConfiguration struct {
 	} `yaml:"dns,omitempty"`
 	LoadBalancer struct {
 		KempLM *kemplm.KempLM `yaml:"kemplm,omitempty"`
-	} `yaml:"loadbalancer,omitempty"`
+	} `yaml:"lb,omitempty"`
 }
 
 // ReadConfig parse the configuration

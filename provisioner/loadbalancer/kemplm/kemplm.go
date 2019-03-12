@@ -32,7 +32,7 @@ func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Messa
 	for {
 		select {
 		case <-k.shutdown:
-			logger.DefaultLogger().Warn("Extension lb.kemplm down")
+			logger.DefaultLogger().Info("Extension lb.kemplm down")
 			return nil
 		case msg := <-receive:
 			logger.DefaultLogger().Debugf("Extension kemplm received a message")

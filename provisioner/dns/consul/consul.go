@@ -19,6 +19,7 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 	var err error
 	var consulConfig api.Config
 	var cliOK bool
+	c.shutdown = make(chan bool)
 	consulConfig.Address = c.URL
 	consulConfig.Token = c.Token
 	c.client, err = api.NewClient(&consulConfig)
@@ -31,7 +32,6 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 		return err
 	}
 
-	c.shutdown = make(chan bool)
 	for {
 		select {
 		case msg := <-receive:
@@ -100,7 +100,7 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 
 func (c *Consul) Stop() error {
 	c.shutdown <- true
-	logger.DefaultLogger().Warn("extension dns.consul down")
+	logger.DefaultLogger().Info("extension dns.consul down")
 	return nil
 }
 

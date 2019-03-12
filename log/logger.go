@@ -23,9 +23,8 @@ type Logger interface {
 }
 
 func init() {
-	// FIXME: properly configure logger based on config ipalloc.
-	// TODO: Add timestamp
-	// TODO: Add package/ipalloc field to std logger?
+	// FIXME: properly configure logger based on config file.
+	// TODO: Add package/file field to std logger?
 	defaultLogger = logrus.StandardLogger()
 	logrus.SetOutput(os.Stdout)
 	//logrus.SetReportCaller(true)

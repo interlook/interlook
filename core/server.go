@@ -21,10 +21,8 @@ var (
 // holds the srv config
 // Keeps a list of configured and started extensions
 type server struct {
-	config  *config.ServerConfiguration
-	signals chan os.Signal
-	//    extensionShutdown chan bool
-	//shutdownOK  chan bool
+	config            *config.ServerConfiguration
+	signals           chan os.Signal
 	coreShutdown      chan bool
 	extensions        map[string]Extension
 	extensionChannels map[string]*extensionChannels
@@ -32,22 +30,8 @@ type server struct {
 	flowEntries       *flowEntries
 	flowChan          chan service.Message
 	flowControlTicker *time.Ticker
-	wg                sync.WaitGroup
-}
-
-// extensionChannels holds the "activated" extensions's channels
-type extensionChannels struct {
-	name    string
-	receive chan service.Message
-	send    chan service.Message
-}
-
-func newExtensionChannels(name string) *extensionChannels {
-	p := new(extensionChannels)
-	p.name = name
-	p.send = make(chan service.Message)
-	p.receive = make(chan service.Message)
-	return p
+	coreWG            sync.WaitGroup
+	extensionsWG      sync.WaitGroup
 }
 
 func initServer() (server, error) {
@@ -56,7 +40,6 @@ func initServer() (server, error) {
 	flag.StringVar(&configFile, "conf", "", "Interlook configuration file")
 	flag.Parse()
 
-	//  srv.extensionShutdown = make(chan bool)
 	srv.coreShutdown = make(chan bool)
 	srv.signals = make(chan os.Signal, 1)
 
@@ -117,7 +100,7 @@ func (s *server) run() {
 	signal.Notify(s.signals, os.Kill)
 
 	// run flowControl
-	s.wg.Add(1)
+	s.coreWG.Add(1)
 	go s.runFlowControl()
 
 	// start all configured extensions
@@ -127,19 +110,20 @@ func (s *server) run() {
 		extensionChannels := newExtensionChannels(name)
 		s.extensionChannels[name] = extensionChannels
 
-		// run the extension's listener
+		// starts the extension's listener
 		go s.extensionListener(extensionChannels)
 
 		curExtension := extension
 		extensionChan := extensionChannels
-		s.wg.Add(1)
+
+		s.extensionsWG.Add(1)
 		go func() {
 			err := curExtension.Start(extensionChan.receive, extensionChan.send)
 			if err != nil {
 				logger.DefaultLogger().Fatalf("Cannot run extension %v: %v\n", extensionChan.name, err)
 			}
-			logger.DefaultLogger().Debugf("###Extension %v stopped", extensionChan.name)
-			s.wg.Done()
+			logger.DefaultLogger().Debugf("Extension %v stopped", extensionChan.name)
+			s.extensionsWG.Done()
 		}()
 	}
 
@@ -150,24 +134,23 @@ func (s *server) run() {
 	go func() {
 		for range s.signals {
 			for name, extension := range s.extensions {
-				logger.DefaultLogger().Warnf("Stopping extension %v", name)
+				logger.DefaultLogger().Infof("Stopping extension %v", name)
 				extension.Stop()
 			}
-			logger.DefaultLogger().Debug("send true to coreShutdown")
+			s.extensionsWG.Wait()
 			s.coreShutdown <- true
-
 		}
 	}()
-	logger.DefaultLogger().Debug("waiting for wg")
-	s.wg.Wait()
-	logger.DefaultLogger().Debug("wg ok")
-	//<-s.coreShutdown
+
+	s.coreWG.Wait()
 }
 
 // extensionListener gets messages from extensions and send them to workflow
-// fill out message's Sender
+// tag messages with sender
+// no need to handle shutdown as corresponding extensions will do
 func (s *server) extensionListener(extension *extensionChannels) {
 	logger.DefaultLogger().Debugf("Listening for %v messages", extension.name)
+
 	for {
 		newMessage := <-extension.send
 		newMessage.Sender = extension.name
@@ -179,15 +162,17 @@ func (s *server) extensionListener(extension *extensionChannels) {
 	}
 }
 
+// runFlowControl runs flowControl every x seconds
 func (s *server) runFlowControl() {
 	for {
 		select {
 		case <-s.coreShutdown:
-			logger.DefaultLogger().Warn("Stopping FlowControl")
+			logger.DefaultLogger().Info("Stopping FlowControl")
 			if err := s.flowEntries.save(s.config.Core.FlowEntriesFile); err != nil {
 				logger.DefaultLogger().Error(err.Error())
 			}
-			s.wg.Done()
+			logger.DefaultLogger().Infof("Saved flow entries to %v", s.config.Core.FlowEntriesFile)
+			s.coreWG.Done()
 			return
 
 		case <-s.flowControlTicker.C:
@@ -246,4 +231,19 @@ func (s *server) flowControl() {
 			ext.receive <- msg
 		}
 	}
+}
+
+// extensionChannels holds the "activated" extensions's channels
+type extensionChannels struct {
+	name    string
+	receive chan service.Message
+	send    chan service.Message
+}
+
+func newExtensionChannels(name string) *extensionChannels {
+	p := new(extensionChannels)
+	p.name = name
+	p.send = make(chan service.Message)
+	p.receive = make(chan service.Message)
+	return p
 }

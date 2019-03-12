@@ -34,6 +34,7 @@ type Extension struct {
 
 // Start initialize and start sending events to core
 func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
+	p.close = make(chan bool)
 	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
 	msg.Action = "add" // add, remove, update, check
@@ -50,13 +51,13 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	for {
 		select {
 		case <-p.close:
-			logger.DefaultLogger().Debug("stopping docker provider")
+			logger.DefaultLogger().Debug("closed docker provider")
 			return nil
 		case msg := <-receive:
 			logger.DefaultLogger().Debugf("docker got msg", msg)
+			continue
 		}
 	}
-	logger.DefaultLogger().Warn("@@@@ exited docker")
 	// do stuff
 	//push <- msg
 	return nil
@@ -65,8 +66,9 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 
 // Stop stops the provider
 func (p *Extension) Stop() error {
-	logger.DefaultLogger().Debug("Stopping docker")
+
 	p.close <- true
+	logger.DefaultLogger().Debug("Stopping docker")
 	return nil
 }
 

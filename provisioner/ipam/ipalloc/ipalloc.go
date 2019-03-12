@@ -112,7 +112,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 
 func (p *Extension) Stop() error {
 	p.shutdown <- true
-	logger.DefaultLogger().Warn("extension ipam.ipalloc down")
+	logger.DefaultLogger().Info("extension ipam.ipalloc down")
 	return nil
 }
 
