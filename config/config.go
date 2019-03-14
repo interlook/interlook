@@ -35,7 +35,7 @@ type ServerConfiguration struct {
 	DNS struct {
 		Consul *consul.Consul `yaml:"consul,omitempty"`
 	} `yaml:"dns,omitempty"`
-	LoadBalancer struct {
+	LB struct {
 		KempLM *kemplm.KempLM `yaml:"kemplm,omitempty"`
 	} `yaml:"lb,omitempty"`
 }
@@ -47,6 +47,9 @@ func ReadConfig(file string) (*ServerConfiguration, error) {
 	if err != nil {
 		return &cfg, err
 	}
-	yaml.Unmarshal(f, &cfg)
+	err = yaml.Unmarshal(f, &cfg)
+	if err != nil {
+		return &cfg, err
+	}
 	return &cfg, nil
 }

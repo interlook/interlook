@@ -1,8 +1,8 @@
 # WORKFLOW
 
-This doc describes the Interlook workflow by explaining a basic example.
+This doc describes the interlook workflow by explaining a basic example.
 
-`Interlook` creates a listener for each configured extension. 
+`interlook` creates a listener for each configured extension. 
 This listener will receive all messages/events coming from a given extension.
 
 Those events, together with their state will be stored in an entry list.

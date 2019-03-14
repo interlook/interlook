@@ -15,7 +15,7 @@ type Consul struct {
 	shutdown chan bool
 }
 
-func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Message) error {
+func (c *Consul) init() error {
 	var err error
 	var consulConfig api.Config
 	var cliOK bool
@@ -31,14 +31,22 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 	if !cliOK || err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Message) error {
+
+	if err := c.init(); err != nil {
+		return err
+	}
 
 	for {
 		select {
 		case msg := <-receive:
 			switch msg.Action {
 			case service.MsgDeleteAction:
-				logger.DefaultLogger().Debugf("request to delete dns for %v", msg.Service.Name)
-				msg.Action = service.MsgUpdateFromExtension
+				log.Debugf("request to delete dns for %v", msg.Service.Name)
+				msg.Action = service.MsgUpdateAction
 				for _, dnsAlias := range msg.Service.DNSAliases {
 					if err := c.deregister(dnsAlias); err != nil {
 						msg.Error = err.Error()
@@ -47,7 +55,7 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 				}
 
 			default:
-				msg.Action = service.MsgUpdateFromExtension
+				msg.Action = service.MsgUpdateAction
 				var servicePort int
 				if msg.Service.TLS {
 					servicePort = 443
@@ -57,11 +65,11 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 				for _, dnsAlias := range msg.Service.DNSAliases {
 					alreadyRegistered, err := c.isServiceExist(dnsAlias)
 					if err != nil {
-						logger.DefaultLogger().Errorf("error %v getting current dns definition for %v", err.Error(), dnsAlias)
+						log.Errorf("error %v getting current dns definition for %v", err.Error(), dnsAlias)
 					}
 					if alreadyRegistered {
 						if err := c.deregister(dnsAlias); err != nil {
-							logger.DefaultLogger().Errorf("Error deregistering %v: %v", dnsAlias, err.Error())
+							log.Errorf("Error deregistering %v: %v", dnsAlias, err.Error())
 						}
 					}
 					registration := api.CatalogRegistration{
@@ -100,7 +108,7 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 
 func (c *Consul) Stop() error {
 	c.shutdown <- true
-	logger.DefaultLogger().Info("extension dns.consul down")
+	log.Info("extension dns.consul down")
 	return nil
 }
 

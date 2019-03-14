@@ -3,7 +3,6 @@ package docker
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -32,10 +31,14 @@ type Extension struct {
 	close          chan bool
 }
 
+func (p *Extension) ListAll(send chan<- service.Message) {
+
+}
+
 // Start initialize and start sending events to core
 func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
 	p.close = make(chan bool)
-	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
+	log.Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
 	msg.Action = "add" // add, remove, update, check
 	msg.Service.Provider = "docker"
@@ -47,28 +50,27 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 
 	time.Sleep(2 * time.Second)
 	send <- msg
+	time.Sleep(3 * time.Second)
+	//msg.Action = "delete"
+	send <- msg
 
 	for {
 		select {
 		case <-p.close:
-			logger.DefaultLogger().Debug("closed docker provider")
+			log.Debug("closed docker provider")
 			return nil
 		case msg := <-receive:
-			logger.DefaultLogger().Debugf("docker got msg", msg)
+			log.Debugf("docker got msg", msg)
 			continue
 		}
 	}
-	// do stuff
-	//push <- msg
-	return nil
-
 }
 
 // Stop stops the provider
 func (p *Extension) Stop() error {
 
 	p.close <- true
-	logger.DefaultLogger().Debug("Stopping docker")
+	log.Debug("Stopping docker")
 	return nil
 }
 
@@ -85,13 +87,13 @@ type Provider struct {
 }
 
 func (w *Provider) Start() {
-	log.Println("[INFO]", "starting docker provider")
+	log.Info("[INFO]", "starting docker provider")
 
 	w.closed = make(chan struct{})
 	w.pollTicker = time.NewTicker(time.Duration(w.PollInterval) * time.Second)
 	w.updateTicker = time.NewTicker(time.Duration(w.UpdateInterval) * time.Second)
 
-	log.Println("[DEBUG]", "provider started")
+	log.Info("[DEBUG]", "provider started")
 
 	defer w.waitGroup.Done()
 
@@ -101,23 +103,23 @@ func (w *Provider) Start() {
 			return
 
 		case <-w.pollTicker.C:
-			log.Println("[DEBUG]", "new poll task")
+			log.Info("[DEBUG]", "new poll task")
 			w.poll()
 
 		case <-w.updateTicker.C:
-			log.Println("[DEBUG]", "new update task")
+			log.Info("[DEBUG]", "new update task")
 			w.update()
 		}
 	}
 }
 
 func (w *Provider) Stop() {
-	log.Println("[DEBUG]", "watcher stop request received")
+	log.Info("[DEBUG]", "watcher stop request received")
 
 	close(w.closed)
 	w.waitGroup.Wait()
 
-	log.Println("[DEBUG]", "watcher stopped")
+	log.Info("[DEBUG]", "watcher stopped")
 }
 
 func (w *Provider) poll() {
@@ -125,14 +127,14 @@ func (w *Provider) poll() {
 
 	cli, err := client.NewEnvClient()
 	if err != nil {
-		log.Println("[ERROR]", err)
+		log.Info("[ERROR]", err)
 
 		return
 	}
 
 	eventsFilters := filters.NewArgs()
-	eventsFilters.Add("label", "lu.sgbt.docker.interlookd.host")
-	eventsFilters.Add("label", "lu.sgbt.docker.interlookd.port")
+	eventsFilters.Add("label", "interlook.host")
+	eventsFilters.Add("label", "interlook.port")
 
 	for name, values := range w.Filters {
 		for _, value := range values {
@@ -144,7 +146,7 @@ func (w *Provider) poll() {
 		Filters: eventsFilters,
 	})
 	if err != nil {
-		log.Println("[ERROR]", err)
+		log.Info("[ERROR]", err)
 
 		return
 	}
@@ -172,7 +174,7 @@ func (w *Provider) poll() {
 }
 
 func (w *Provider) onContainerStart(event events.Message) {
-	log.Println("[DEBUG]", "container started", event.Actor.ID)
+	log.Info("[DEBUG]", "container started", event.Actor.ID)
 
 	w.containersLock.Lock()
 	defer w.containersLock.Unlock()
@@ -181,7 +183,7 @@ func (w *Provider) onContainerStart(event events.Message) {
 }
 
 func (w *Provider) onContainerStop(event events.Message) {
-	log.Println("[DEBUG]", "container stopped", event.Actor.ID)
+	log.Info("[DEBUG]", "container stopped", event.Actor.ID)
 
 	w.containersLock.Lock()
 	defer w.containersLock.Unlock()
@@ -198,7 +200,7 @@ func (w *Provider) update() {
 
 	cli, err := client.NewEnvClient()
 	if err != nil {
-		log.Println("[ERROR]", err)
+		log.Info("[ERROR]", err)
 
 		return
 	}
@@ -208,14 +210,14 @@ func (w *Provider) update() {
 	for _, id := range w.containers {
 		inspect, err := cli.ContainerInspect(ctx, id)
 		if err != nil {
-			log.Println("[ERROR]", err)
+			log.Info("[ERROR]", err)
 
 			return
 		}
 
 		addrs, err := net.InterfaceAddrs()
 		if err != nil {
-			log.Println("[ERROR]", err)
+			log.Info("[ERROR]", err)
 
 			return
 		}
@@ -232,7 +234,7 @@ func (w *Provider) update() {
 			}
 		}
 		if ip == "" {
-			log.Println("[ERROR]", "failed to get host ipam")
+			log.Info("[ERROR]", "failed to get host ipam")
 
 			return
 		}
@@ -240,7 +242,7 @@ func (w *Provider) update() {
 		var port string
 
 		if inspect.HostConfig.NetworkMode.IsHost() {
-			port = inspect.Config.Labels["lu.sgbt.docker.interlookd.port"]
+			port = inspect.Config.Labels["interlook.port"]
 		} else {
 			exposed := false
 
@@ -262,9 +264,9 @@ func (w *Provider) update() {
 		}
 
 		if inspect.State.Running && inspect.State.Health.Status != "healthy" {
-			w.addTarget(inspect.Config.Labels["lu.sgbt.docker.interlookd.host"], ip, port, id)
+			w.addTarget(inspect.Config.Labels["interlook.host"], ip, port, id)
 		} else {
-			w.removeTarget(inspect.Config.Labels["lu.sgbt.docker.interlookd.host"], ip, port, id)
+			w.removeTarget(inspect.Config.Labels["interlook.host"], ip, port, id)
 		}
 	}
 

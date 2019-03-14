@@ -11,3 +11,8 @@ type Extension interface {
 	Start(receive <-chan service.Message, send chan<- service.Message) error
 	Stop() error
 }
+
+type Provider interface {
+	Extension
+	ListAll(send chan<- service.Message)
+}

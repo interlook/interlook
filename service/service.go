@@ -3,19 +3,10 @@ package service
 import "reflect"
 
 const (
-	//define message senders
-	IPAMFile           = "ipam.ipalloc"
-	ProviderDocker     = "provider.docker"
-	ProviderSwarm      = "provider.swarm"
-	ProviderKubernetes = "provider.kubernetes"
-	DNSConsul          = "dns.consul"
-	LBf5               = "lb.f5"
-	LBKempLM           = "lb.kemplm"
 	//define message actions
-	MsgAddAction           = "add"
-	MsgUpdateFromExtension = "extUpdate"
-	MsgUpdateAction        = "update"
-	MsgDeleteAction        = "delete"
+	MsgAddAction    = "add"
+	MsgUpdateAction = "update"
+	MsgDeleteAction = "delete"
 )
 
 // Message holds config information with providers

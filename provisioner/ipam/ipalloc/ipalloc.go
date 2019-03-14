@@ -56,39 +56,41 @@ func incrementIP(ip net.IP) {
 func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
 	// load db from ipalloc
 	if err := p.db.load(p.DbFile); err != nil {
-		logger.DefaultLogger().Warnf("error loading db ipalloc %v", err.Error())
+		log.Warnf("error loading db ipalloc %v", err.Error())
 	}
 	p.shutdown = make(chan bool)
 
 	for {
 		select {
 		case <-p.shutdown:
-			logger.DefaultLogger().Debug("Extension ipam.ipalloc shut down")
+			log.Debug("Extension ipam.ipalloc shut down")
 			return nil
 
 		case msg := <-receive:
-			logger.DefaultLogger().Debugf("ipam.ipalloc received message %v\n", msg)
+			log.Debugf("ipam.ipalloc received message %v\n", msg)
 
 			switch msg.Action {
 			case service.MsgDeleteAction:
-				msg.Action = service.MsgUpdateFromExtension
+				msg.Action = service.MsgUpdateAction
 				if err := p.deleteService(msg.Service.Name); err != nil {
-					logger.DefaultLogger().Errorf("Error deleting service %v", msg.Service.Name, err.Error())
+					log.Errorf("Error deleting service %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
 					send <- msg
 					continue
 				}
-				p.db.save(p.DbFile)
+				if err := p.db.save(p.DbFile); err != nil {
+					log.Errorf("Error saving flowEntries %v", err)
+				}
 				msg.Service.PublicIP = ""
 				send <- msg
 			default:
 				// check if service is already defined
 				// if yes send back msg with update action
 				// if not, get new IPAM, update service def and send back msg
-				msg.Action = service.MsgUpdateFromExtension
+				msg.Action = service.MsgUpdateAction
 
 				if p.serviceExist(&msg) {
-					logger.DefaultLogger().Debugf("service %v already exist", msg.Service.Name)
+					log.Debugf("service %v already exist", msg.Service.Name)
 					record := p.db.getServiceByName(msg.Service.Name)
 					msg.Service.Name = record.Host
 					msg.Service.PublicIP = record.IP
@@ -96,7 +98,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 					send <- msg
 					continue
 				}
-				logger.DefaultLogger().Debugf("service %v does not exist, adding", msg.Service.Name)
+				log.Debugf("service %v does not exist, adding", msg.Service.Name)
 				ip, err := p.addService(msg.Service.Name)
 				if err != nil {
 					msg.Error = err.Error()
@@ -112,7 +114,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 
 func (p *Extension) Stop() error {
 	p.shutdown <- true
-	logger.DefaultLogger().Info("extension ipam.ipalloc down")
+	log.Info("extension ipam.ipalloc down")
 	return nil
 }
 
@@ -136,7 +138,7 @@ func (d db) getServiceByName(name string) (svc IPAMRecord) {
 }
 
 func (p *Extension) addService(name string) (newIP string, err error) {
-	logger.DefaultLogger().Debugf("cidr: %v", p.NetworkCidr)
+	log.Debugf("cidr: %v", p.NetworkCidr)
 	ip, ipnet, err := net.ParseCIDR(p.NetworkCidr)
 	if err != nil {
 		return "", err
@@ -150,7 +152,7 @@ func (p *Extension) addService(name string) (newIP string, err error) {
 			newRec := IPAMRecord{ip.String(), name}
 			p.db.Records = append(p.db.Records, newRec)
 			if err := p.db.save(p.DbFile); err != nil {
-				logger.DefaultLogger().Errorf("Error saving db to %v\n", err)
+				log.Errorf("Error saving db to %v\n", err)
 			}
 			return ip.String(), nil
 		}

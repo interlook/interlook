@@ -2,9 +2,9 @@
 core:
   logLevel: DEBUG
   listenPort: 8080
-  logFile : ./share/interlook.log
+  logFile : stdout
   workflow: provider.docker,ipam.ipalloc,dns.consul,lb.kemplm
-  checkFlowInterval: 2s
+  checkFlowInterval: 5s
   flowEntriesFile: ./share/flowentries.db
 provider:
   docker:
