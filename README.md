@@ -16,6 +16,9 @@ Then it ensures the tasks are performed by the "provisioners".
 
 Technically, providers and provisioners are all implementations of the Extension interface.
 
+![](./docs/interook-draw.png)
+
+
 Currently supported Providers:
  * ~~Docker~~
  * ~~Docker Swarm~~
