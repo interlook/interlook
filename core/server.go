@@ -2,7 +2,6 @@ package core
 
 import (
 	"flag"
-	"fmt"
 	"github.com/bhuisgen/interlook/config"
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
@@ -53,7 +52,7 @@ func Start() {
 func initServer() (server, error) {
 	var err error
 	var s server
-	fmt.Println("aaa")
+
 	flag.StringVar(&configFile, "conf", "", "interlook configuration file")
 	flag.Parse()
 
@@ -61,9 +60,11 @@ func initServer() (server, error) {
 	if err != nil {
 		return s, err
 	}
-	fmt.Println("bbb")
+
+	// init logger
 	log.Init(s.config.Core.LogFile, s.config.Core.LogLevel)
 	log.Debug("logger ok")
+
 	// init channels and maps
 	s.coreShutdown = make(chan bool)
 	s.signals = make(chan os.Signal, 1)
@@ -135,7 +136,7 @@ func (s *server) run() {
 
 	// run flowControl
 	s.coreWG.Add(1)
-	go s.runFlowControl()
+	go s.flowControlRunner()
 
 	// start all configured extensions
 	// for each one, starts a dedicated listener goroutine
@@ -204,8 +205,8 @@ func (s *server) extensionListener(extension *extensionChannels) {
 	}
 }
 
-// runFlowControl runs flowControl every x seconds
-func (s *server) runFlowControl() {
+// flowControlRunner runs flowControl every x seconds
+func (s *server) flowControlRunner() {
 	for {
 		select {
 		case <-s.coreShutdown:
@@ -222,16 +223,6 @@ func (s *server) runFlowControl() {
 			s.flowControl()
 			//FIXME: add safe criteria for deletion
 			//s.cleanUndeployed()
-		}
-	}
-}
-
-func (s *server) cleanUndeployed() {
-	s.flowEntries.Lock()
-	defer s.flowEntries.Unlock()
-	for k, v := range s.flowEntries.M {
-		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == flowUndeployedState {
-			delete(s.flowEntries.M, k)
 		}
 	}
 }
@@ -285,6 +276,16 @@ func (s *server) flowControl() {
 			}
 
 			ext.receive <- msg
+		}
+	}
+}
+
+func (s *server) cleanUndeployed() {
+	s.flowEntries.Lock()
+	defer s.flowEntries.Unlock()
+	for k, v := range s.flowEntries.M {
+		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == flowUndeployedState {
+			delete(s.flowEntries.M, k)
 		}
 	}
 }
