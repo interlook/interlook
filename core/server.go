@@ -7,6 +7,7 @@ import (
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
 	"github.com/fatih/structs"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ type server struct {
 	flowControlTicker *time.Ticker
 	coreWG            sync.WaitGroup // waitgroup for core processes sync
 	extensionsWG      sync.WaitGroup // waitgroup for extensions sync
+	apiServer         *http.Server
 }
 
 // Start initialize server and run it
@@ -161,7 +163,8 @@ func (s *server) run() {
 	}
 
 	// run http core
-	go s.startHTTP()
+	s.coreWG.Add(1)
+	go s.startAPI()
 
 	// SIGs to handle proper extensions and core components shutdown
 	go func() {
@@ -173,6 +176,7 @@ func (s *server) run() {
 				}
 			}
 			s.extensionsWG.Wait()
+			s.stopAPI()
 			s.coreShutdown <- true
 		}
 	}()
