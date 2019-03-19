@@ -1,6 +1,16 @@
 # WORKFLOW
 
-This doc describes the Interlook workflow by explaining a basic example
+This doc describes the interlook workflow by explaining a basic example.
+
+`interlook` creates a listener for each configured extension. 
+This listener will receive all messages/events coming from a given extension.
+
+Those events, together with their state will be stored in an entry list.
+
+In order to bring the services to the desired state (deployed or undeployed), `interlook` polls the entry list at an interval defined in the config (`core.checkFlowInterval`). 
+It then sends an event to the corresponding extension.
+
+The extension is handling the required action and sending back the status to the core listener.    
 
 ## Example
 

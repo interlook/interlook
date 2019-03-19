@@ -1,7 +1,6 @@
 package swarm
 
 import (
-	"log"
 	"sync"
 	"time"
 
@@ -27,7 +26,7 @@ type Extension struct {
 }
 
 func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
-	logger.DefaultLogger().Printf("Starting %v on %v\n", p.Name, p.Endpoint)
+	log.Printf("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg service.Message
 	msg.Action = "add" // add, remove, update, check
 	msg.Service.Provider = "swarm"
@@ -40,14 +39,12 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 		time.Sleep(10 * time.Second)
 		send <- msg
 	}
-	logger.DefaultLogger().Println("exiting")
-	// do stuff
-	//send <- msg
-	return nil
+
 }
 
-func (p *Extension) Stop() {
-	logger.DefaultLogger().Printf("Stopping %v on %v\n", p.Name, p.Endpoint)
+func (p *Extension) Stop() error {
+	log.Printf("Stopping %v on %v\n", p.Name, p.Endpoint)
+	return nil
 }
 
 // FIXME: will Init function initialize the Provider (from Extension)?
@@ -69,7 +66,7 @@ func (w *Provider) StartO() {
 	w.pollTicker = time.NewTicker(time.Duration(w.PollInterval) * time.Second)
 	w.updateTicker = time.NewTicker(time.Duration(w.UpdateInterval) * time.Second)
 
-	log.Println("[DEBUG]", "provider started")
+	log.Info("[DEBUG]", "provider started")
 
 	for {
 		select {
@@ -79,23 +76,23 @@ func (w *Provider) StartO() {
 			return
 
 		case <-w.pollTicker.C:
-			log.Println("[DEBUG]", "new poll task")
+			log.Info("[DEBUG]", "new poll task")
 			w.poll()
 
 		case <-w.updateTicker.C:
-			log.Println("[DEBUG]", "new update task")
+			log.Info("[DEBUG]", "new update task")
 			w.update()
 		}
 	}
 }
 
 func (w *Provider) Stop() {
-	log.Println("[DEBUG]", "watcher stop request received")
+	log.Info("[DEBUG]", "watcher stop request received")
 
 	close(w.closed)
 	w.waitGroup.Wait()
 
-	log.Println("[DEBUG]", "watcher stopped")
+	log.Info("[DEBUG]", "watcher stopped")
 }
 
 func (w *Provider) poll() {
@@ -103,14 +100,14 @@ func (w *Provider) poll() {
 
 	cli, err := client.NewEnvClient()
 	if err != nil {
-		log.Println("[ERROR]", err)
+		log.Info("[ERROR]", err)
 
 		return
 	}
 
 	servicesFilters := filters.NewArgs()
-	servicesFilters.Add("label", "lu.sgbt.docker.interlookd.host")
-	servicesFilters.Add("label", "lu.sgbt.docker.interlookd.port")
+	servicesFilters.Add("label", "interlook.host")
+	servicesFilters.Add("label", "interlook.port")
 
 	for name, values := range w.Filters {
 		for _, value := range values {
@@ -122,7 +119,7 @@ func (w *Provider) poll() {
 		Filter: servicesFilters,
 	})
 	if err != nil {
-		log.Println("[ERROR]", "failed to list services", err)
+		log.Info("[ERROR]", "failed to list services", err)
 
 		return
 	}
@@ -144,7 +141,7 @@ func (w *Provider) update() {
 
 	cli, err := client.NewEnvClient()
 	if err != nil {
-		log.Println("[ERROR]", err)
+		log.Info("[ERROR]", err)
 
 		return
 	}
@@ -154,7 +151,7 @@ func (w *Provider) update() {
 	for _, id := range w.services {
 		service, _, err := cli.ServiceInspectWithRaw(ctx, id)
 		if err != nil {
-			log.Println("[ERROR]", err)
+			log.Info("[ERROR]", err)
 
 			return
 		}
@@ -166,7 +163,7 @@ func (w *Provider) update() {
 			Filter: tasksFilters,
 		})
 		if err != nil {
-			log.Println("[ERROR]", err)
+			log.Info("[ERROR]", err)
 
 			return
 		}
@@ -176,25 +173,25 @@ func (w *Provider) update() {
 
 			inspect, err := cli.ContainerInspect(ctx, id)
 			if err != nil {
-				log.Println("[ERROR]", err)
+				log.Info("[ERROR]", err)
 
 				return
 			}
 
 			node, data, err := cli.NodeInspectWithRaw(ctx, task.NodeID)
 			if err != nil {
-				log.Println("[ERROR]", err)
+				log.Info("[ERROR]", err)
 
 				return
 			}
 			ip := "1.2.3.4" // FIXME: no addr field ?
-			log.Println(node.ID)
-			log.Println(data)
+			log.Info(node.ID)
+			log.Info(data)
 
 			var port string
 
 			if inspect.HostConfig.NetworkMode.IsHost() {
-				port = inspect.Config.Labels["lu.sgbt.docker.interlookd.port"]
+				port = inspect.Config.Labels["interlook.port"]
 			} else {
 				exposed := false
 
@@ -216,9 +213,9 @@ func (w *Provider) update() {
 			}
 
 			if inspect.State.Running && inspect.State.Health.Status != "healthy" {
-				w.addTarget(service.Spec.Labels["lu.sgbt.docker.interlookd.host"], ip, port, id)
+				w.addTarget(service.Spec.Labels["interlook.host"], ip, port, id)
 			} else {
-				w.removeTarget(service.Spec.Labels["lu.sgbt.docker.interlookd.host"], ip, port, id)
+				w.removeTarget(service.Spec.Labels["interlook.host"], ip, port, id)
 			}
 		}
 	}

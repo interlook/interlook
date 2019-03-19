@@ -3,6 +3,7 @@ package kemplm
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
 	"io/ioutil"
@@ -10,45 +11,61 @@ import (
 	"strconv"
 )
 
-// FIXME: Add LB port options in config + service overwrite for non http services?
-
 type KempLM struct {
 	Endpoint   string `yaml:"endpoint"`
 	User       string `yaml:"username"`
 	Password   string `yaml:"password"`
+	HttpPort   int    `yaml:"httpPort"`
+	HttpsPort  int    `yaml:"httpsPort"`
 	shutdown   chan bool
 	httpClient http.Client
 }
 
-func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Message) error {
+func (k *KempLM) initialize() {
 	k.httpClient = makeHttpClient()
-	// TODO: add connection test
+	if k.HttpPort == 0 {
+		k.HttpPort = 80
+	}
+	if k.HttpsPort == 0 {
+		k.HttpsPort = 443
+	}
 
 	k.shutdown = make(chan bool)
+
+}
+
+func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Message) error {
+	k.initialize()
+
+	if err := k.testConnection(); err != nil {
+		return err
+	}
 
 	for {
 		select {
 		case <-k.shutdown:
-			logger.DefaultLogger().Warn("Extension lb.kemplm down")
+			log.Info("Extension lb.kemplm down")
 			return nil
+
 		case msg := <-receive:
-			logger.DefaultLogger().Debugf("Extension kemplm received a message")
+			log.Debugf("Extension kemplm received a message")
 			switch msg.Action {
 			case service.MsgAddAction:
-				msg.Action = service.MsgUpdateFromExtension
+				msg.Action = service.MsgUpdateAction
 
 				if err := k.addVS(msg); err != nil {
-					logger.DefaultLogger().Debugf("error %v in addVS", err.Error())
+					log.Debugf("error %v in addVS", err.Error())
 					msg.Error = err.Error()
 				}
 
 				if err := k.addRS(msg); err != nil {
-					logger.DefaultLogger().Debugf("error %v in addRS", err.Error())
+					log.Debugf("error %v in addRS", err.Error())
 					msg.Error = err.Error()
 				}
 				send <- msg
+
 			case service.MsgDeleteAction:
-				msg.Action = service.MsgUpdateFromExtension
+				msg.Action = service.MsgUpdateAction
 
 				exist, err := k.isVSDefined(msg)
 				if err != nil {
@@ -66,8 +83,28 @@ func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Messa
 	}
 }
 
-func (k *KempLM) Stop() {
+func (k *KempLM) Stop() error {
 	k.shutdown <- true
+
+	return nil
+}
+
+func (k *KempLM) testConnection() error {
+	req, err := k.newAuthRequest(http.MethodGet, k.Endpoint+"/access/listvs")
+	if err != nil {
+		return err
+	}
+
+	_, httpCode, err := k.executeRequest(req)
+	if err != nil {
+		return err
+	}
+
+	if httpCode != 200 {
+		return errors.New("could not establish connection")
+	}
+
+	return nil
 }
 
 func (k *KempLM) deleteVS(msg service.Message) error {
@@ -76,64 +113,87 @@ func (k *KempLM) deleteVS(msg service.Message) error {
 		return err
 	}
 
-	_, err = k.executeRequest(req)
+	_, httpCode, err := k.executeRequest(req)
 	if err != nil {
 		return err
+	}
+
+	if httpCode != 200 {
+		return errors.New("could not delete VS")
 	}
 
 	return nil
 }
 
-func (k *KempLM) isRSDefined(msg service.Message) (bool, error) {
-	req, err := k.newVSRequest("/access/listrs", msg)
+func (k *KempLM) isRSDefined(msg service.Message, host string) (bool, error) {
+	req, err := k.newVSRequest("/access/showrs", msg)
 	if err != nil {
 		return false, err
 	}
 
 	q := req.URL.Query()
 	q.Add("rsport", strconv.Itoa(msg.Service.Port))
-	q.Add("rs", msg.Service.Hosts[0])
+	q.Add("rs", host)
 
 	req.URL.RawQuery = q.Encode()
 
-	_, err = k.executeRequest(req)
+	_, httpCode, err := k.executeRequest(req)
 	if err != nil {
 		return false, err
 	}
-
-	return true, nil
+	if httpCode == 200 {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (k *KempLM) isVSDefined(msg service.Message) (bool, error) {
-	req, err := k.newVSRequest("/access/listvs", msg)
+	req, err := k.newVSRequest("/access/showvs", msg)
 	if err != nil {
 		return false, err
 	}
 
-	_, err = k.executeRequest(req)
+	_, httpCode, err := k.executeRequest(req)
 	if err != nil {
 		return false, err
 	}
 
-	return true, nil
+	switch httpCode {
+	case 200:
+		return true, nil
+
+	case 422:
+		return false, nil
+
+	default:
+		return false, errors.New(fmt.Sprintf("Unexpected http exit code %v", httpCode))
+	}
 }
 
 func (k *KempLM) addVS(msg service.Message) error {
-	req, err := k.newVSRequest("/access/addvs", msg)
+
+	exist, err := k.isVSDefined(msg)
 	if err != nil {
 		return err
 	}
 
-	q := req.URL.Query()
-	q.Add("nickname", msg.Service.Name)
-	q.Add("vstype", "gen")
-	q.Add("checktype", "icmp")
+	if !exist {
+		req, err := k.newVSRequest("/access/addvs", msg)
+		if err != nil {
+			return err
+		}
 
-	req.URL.RawQuery = q.Encode()
+		q := req.URL.Query()
+		q.Add("nickname", msg.Service.Name)
+		q.Add("vstype", "gen")
+		q.Add("checktype", "icmp")
 
-	_, err = k.executeRequest(req)
-	if err != nil {
-		return err
+		req.URL.RawQuery = q.Encode()
+
+		_, _, err = k.executeRequest(req)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -141,38 +201,50 @@ func (k *KempLM) addVS(msg service.Message) error {
 
 func (k *KempLM) addRS(msg service.Message) error {
 	for _, host := range msg.Service.Hosts {
-		req, err := k.newVSRequest("/access/addrs", msg)
-		if err != nil {
-			return err
-		}
+		rsExists, _ := k.isRSDefined(msg, host)
 
-		q := req.URL.Query()
-		q.Add("rs", host)
-		q.Add("rsport", strconv.Itoa(msg.Service.Port))
+		if !rsExists {
+			req, err := k.newVSRequest("/access/addrs", msg)
+			if err != nil {
+				return err
+			}
+			log.Debugf("rs does not exists for host %v", host)
+			q := req.URL.Query()
+			q.Add("rs", host)
+			q.Add("rsport", strconv.Itoa(msg.Service.Port))
+			q.Add("non_local", "1")
 
-		req.URL.RawQuery = q.Encode()
-
-		req, err = k.newAuthRequest(http.MethodGet, req.URL.String())
-		if err != nil {
-			return err
-		}
-
-		_, err = k.executeRequest(req)
-		if err != nil {
-			return err
+			req.URL.RawQuery = q.Encode()
+			log.Debugf("url: %v", req.URL.String())
+			req, err = k.newAuthRequest(http.MethodGet, req.URL.String())
+			if err != nil {
+				return err
+			}
+			body, httpCode, err := k.executeRequest(req)
+			if err != nil {
+				return err
+			}
+			if httpCode != 200 {
+				log.Debugf("non 200 return code (%v). Body: %v", httpCode, string(body))
+			}
+			log.Debugf("http response code %v", httpCode)
+			// }
 		}
 	}
+
 	return nil
 }
 
 func makeHttpClient() http.Client {
 	httpClient := http.Client{}
+
 	httpClient.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			InsecureSkipVerify: true,
 		},
 	}
+
 	return httpClient
 }
 
@@ -196,10 +268,10 @@ func (k *KempLM) newVSRequest(path string, msg service.Message) (*http.Request, 
 	if err != nil {
 		return req, err
 	}
-	port := "443"
 
+	port := strconv.Itoa(k.HttpsPort)
 	if !msg.Service.TLS {
-		port = "80"
+		port = strconv.Itoa(k.HttpPort)
 	}
 
 	q := req.URL.Query()
@@ -213,26 +285,26 @@ func (k *KempLM) newVSRequest(path string, msg service.Message) (*http.Request, 
 }
 
 // Executes the raw request, does not parse Vault response
-func (k *KempLM) executeRequest(r *http.Request) ([]byte, error) {
-	logger.DefaultLogger().Debugf("exec url: %v", r.URL.String())
+func (k *KempLM) executeRequest(r *http.Request) (body []byte, statusCode int, err error) {
+	//var err error
+	//log.Debugf("exec url: %v", r.URL.String())
 
 	res, err := k.httpClient.Do(r)
 	if err != nil {
-		logger.DefaultLogger().Error(err.Error())
-		return nil, err
+		log.Error(err.Error())
+		return nil, 0, err
 	}
-	defer res.Body.Close()
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			log.Errorf("Error closing body", err)
+		}
+	}()
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
-		logger.DefaultLogger().Debugf(err.Error())
-		return body, err
+		log.Debugf(err.Error())
+		return body, res.StatusCode, err
 	}
 
-	if res.StatusCode != http.StatusOK {
-		logger.DefaultLogger().Debugf(res.Status)
-		return body, errors.New("non 200 return code ")
-	}
-
-	return body, nil
+	return body, res.StatusCode, nil
 }

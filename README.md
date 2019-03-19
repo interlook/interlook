@@ -16,19 +16,24 @@ Then it ensures the tasks are performed by the "provisioners".
 
 Technically, providers and provisioners are all implementations of the Extension interface.
 
+![](./docs/interook-draw.png)
+
+
 Currently supported Providers:
  * ~~Docker~~
  * ~~Docker Swarm~~
  * ~~Docker Enterprise Edition~~
+ * ~~Consul Catalog~~
 
 Currently supported Provisioners:
  * IP:
-    * ipalloc (an embedded simple local IPAM)
+    * [ipalloc](./provisioner/ipam/ipalloc/README.md) (an embedded simple local IPAM)
+    * ~~GestioIP~~
  * DNS:
-    * Consul (DNS records will contain Consul specific suffix: .service.domain )
+    * Consul (DNS records will contain Consul specific suffix: .service._consul-domain_ )
  * Load Balancer:
+    * Kemp LoadMaster
     * ~~F5 Big-IP~~ 
-    * ~~Envoy proxy~~ 
 
 ## Doc
 

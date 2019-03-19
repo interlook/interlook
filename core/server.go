@@ -1,28 +1,293 @@
 package core
 
-// TODO: proper init from "main"
-// TODO: flags and or env var. Minimum -c configfile -l loglevel
 import (
+	"flag"
 	"github.com/bhuisgen/interlook/config"
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/service"
+	"github.com/fatih/structs"
+	"net/http"
+	"reflect"
+	"strings"
+	"sync"
 	"time"
 
 	"os"
 	"os/signal"
 )
 
-// holds the srv config
-// Keeps a list of configured and started providers
+var (
+	//	srv        server
+	configFile string
+	Version    string
+)
+
+// holds Interlook server config
+// Keeps a list of configured and started extensions
 type server struct {
 	config            *config.ServerConfiguration
-	sigChannel        chan os.Signal
+	signals           chan os.Signal
+	coreShutdown      chan bool
 	extensions        map[string]Extension
 	extensionChannels map[string]*extensionChannels
 	workflow          workflow
 	flowEntries       *flowEntries
 	flowChan          chan service.Message
 	flowControlTicker *time.Ticker
+	coreWG            sync.WaitGroup // waitgroup for core processes sync
+	extensionsWG      sync.WaitGroup // waitgroup for extensions sync
+	apiServer         *http.Server
+}
+
+// Start initialize server and run it
+func Start() {
+	srv, err := initServer()
+	if err != nil {
+		log.Fatal(err)
+	}
+	srv.run()
+}
+
+// initialize the server components
+func initServer() (server, error) {
+	var err error
+	var s server
+
+	flag.StringVar(&configFile, "conf", "", "interlook configuration file")
+	flag.Parse()
+
+	s.config, err = config.ReadConfig(configFile)
+	if err != nil {
+		return s, err
+	}
+
+	// init logger
+	log.Init(s.config.Core.LogFile, s.config.Core.LogLevel)
+	log.Debug("logger ok")
+
+	// init channels and maps
+	s.coreShutdown = make(chan bool)
+	s.signals = make(chan os.Signal, 1)
+	s.flowChan = make(chan service.Message)
+	s.flowControlTicker = time.NewTicker(s.config.Core.CheckFlowInterval)
+	s.extensionChannels = make(map[string]*extensionChannels)
+
+	// init workflow
+	s.workflow = s.initWorkflow()
+
+	// init configured extensions
+	s.initExtensions()
+
+	// init flowEntries table
+	s.flowEntries = newFlowEntries()
+	if err := s.flowEntries.loadFile(s.config.Core.FlowEntriesFile); err != nil {
+		log.Errorf("Could not load entries from file: %v", err)
+	}
+
+	return s, nil
+}
+
+// initialize the workflow from config
+func (s *server) initWorkflow() workflow {
+	var wf workflow
+	wf = make(map[int]string)
+
+	for k, v := range strings.Split(s.config.Core.Workflow, ",") {
+		wf[k+1] = v
+	}
+
+	// add run and end steps to workflow
+	// usefull if we want to use real transitions later
+	wf[0] = flowUndeployedState
+	wf[len(wf)] = flowDeployedState
+
+	return wf
+}
+
+// initExtensions initializes the extensions that are configured in the workflow steps
+func (s *server) initExtensions() {
+	s.extensions = make(map[string]Extension)
+	srvConf := structs.New(s.config)
+
+	// get needed extensions from workflow
+	for _, step := range s.workflow {
+		ext := strings.Split(step, ".")
+		if len(ext) == 2 {
+			extType := strings.ToLower(ext[0])
+			extName := strings.ToLower(ext[1])
+			// loop through struct fields. Ifs are needed due to case sensitivity
+			for _, f := range srvConf.Fields() {
+				if strings.ToLower(f.Name()) == extType && f.Kind() == reflect.Struct {
+					for _, n := range srvConf.Field(f.Name()).Fields() {
+						if strings.ToLower(n.Name()) == extName {
+							s.extensions[step] = n.Value().(Extension)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// run starts all core components and extensions
+func (s *server) run() {
+	signal.Notify(s.signals, os.Interrupt)
+	signal.Notify(s.signals, os.Kill)
+
+	// run flowControl
+	s.coreWG.Add(1)
+	go s.flowControlRunner()
+
+	// start all configured extensions
+	// for each one, starts a dedicated listener goroutine
+	for name, extension := range s.extensions {
+		log.Printf("adding %v to extensionChannels", name)
+		extensionChannels := newExtensionChannels(name)
+		s.extensionChannels[name] = extensionChannels
+
+		// starts the extension's listener
+		go s.extensionListener(extensionChannels)
+
+		curExtension := extension
+		extensionChan := extensionChannels
+
+		// launch the extension
+		s.extensionsWG.Add(1)
+		go func() {
+			err := curExtension.Start(extensionChan.receive, extensionChan.send)
+			if err != nil {
+				log.Fatalf("Cannot run extension %v: %v\n", extensionChan.name, err)
+			}
+			log.Debugf("Extension %v stopped", extensionChan.name)
+			s.extensionsWG.Done()
+		}()
+	}
+
+	// run http core
+	s.coreWG.Add(1)
+	go s.startAPI()
+
+	// SIGs to handle proper extensions and core components shutdown
+	go func() {
+		for range s.signals {
+			for name, extension := range s.extensions {
+				log.Infof("Stopping extension %v", name)
+				if err := extension.Stop(); err != nil {
+					log.Errorf("Error stopping extension %v:%v", name, err)
+				}
+			}
+			s.extensionsWG.Wait()
+			s.stopAPI()
+			s.coreShutdown <- true
+		}
+	}()
+
+	s.coreWG.Wait()
+}
+
+// extensionListener gets messages from extensions and send them to workflow
+// tag messages with sender
+// no need to handle shutdown as corresponding extensions will do
+func (s *server) extensionListener(extension *extensionChannels) {
+	log.Debugf("Listening for %v messages", extension.name)
+
+	for {
+		newMessage := <-extension.send
+		// tag the message with it's sender
+		newMessage.Sender = extension.name
+
+		log.Debugf("Received message from %v, sending to flow control\n", extension.name)
+
+		// inject message to workflow
+		if err := s.flowEntries.mergeMessage(newMessage); err != nil {
+			log.Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
+		}
+	}
+}
+
+// flowControlRunner runs flowControl every x seconds
+func (s *server) flowControlRunner() {
+	for {
+		select {
+		case <-s.coreShutdown:
+			log.Info("Stopping FlowControl")
+			if err := s.flowEntries.save(s.config.Core.FlowEntriesFile); err != nil {
+				log.Error(err.Error())
+			}
+			log.Infof("Saved flow entries to %v", s.config.Core.FlowEntriesFile)
+
+			s.coreWG.Done()
+			return
+		case <-s.flowControlTicker.C:
+			log.Debug("Running flowControl")
+			s.flowControl()
+			//FIXME: add safe criteria for deletion
+			//s.cleanUndeployed()
+		}
+	}
+}
+
+// flowControl compares received service definition with existing one
+// triggers required action(s) to bring service state
+// to desired state (deployed or undeployed)
+func (s *server) flowControl() {
+	for k, v := range s.flowEntries.M {
+		if v.State != v.ExpectedState && !v.WorkInProgress {
+			var msg service.Message
+
+			if v.Error != "" {
+				log.Warnf("Service %v is in error %v", v.Service.Name, v.Error)
+				continue
+			}
+
+			log.Debugf("flowControl: Service %v current state differs from target state", k)
+			reverse := false
+			if v.ExpectedState == flowUndeployedState {
+				reverse = true
+			}
+
+			nextStep, err := s.workflow.getNextStep(v.State, reverse)
+			if err != nil {
+				log.Errorf("Could not find next step for %v %v\n", k, err)
+				continue
+			}
+			log.Debugf("next step: %v", nextStep)
+
+			if s.workflow.isLastStep(nextStep, reverse) {
+				log.Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
+				s.flowEntries.closeEntry(k, reverse)
+				continue
+			}
+
+			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
+
+			if reverse {
+				msg.Action = service.MsgDeleteAction
+			} else {
+				msg.Action = service.MsgAddAction
+			}
+
+			msg.Service = v.Service
+			// get the extension channel to write message to
+			ext, ok := s.extensionChannels[nextStep]
+			if !ok {
+				log.Errorf("flowControl could not find channel for ext %v\n", nextStep)
+				continue
+			}
+
+			ext.receive <- msg
+		}
+	}
+}
+
+func (s *server) cleanUndeployed() {
+	s.flowEntries.Lock()
+	defer s.flowEntries.Unlock()
+	for k, v := range s.flowEntries.M {
+		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == flowUndeployedState {
+			delete(s.flowEntries.M, k)
+		}
+	}
 }
 
 // extensionChannels holds the "activated" extensions's channels
@@ -37,188 +302,6 @@ func newExtensionChannels(name string) *extensionChannels {
 	p.name = name
 	p.send = make(chan service.Message)
 	p.receive = make(chan service.Message)
+
 	return p
-}
-
-var srv server
-
-func initServer() (server, error) {
-	var err error
-	srv.config, err = config.ReadConfig("./share/conf/config.yml")
-	if err != nil {
-		return srv, err
-	}
-	srv.extensions = make(map[string]Extension)
-	srv.extensionChannels = make(map[string]*extensionChannels)
-	srv.sigChannel = make(chan os.Signal)
-	srv.flowChan = make(chan service.Message)
-	srv.flowControlTicker = time.NewTicker(srv.config.Core.CheckFlowInterval)
-
-	// add configured extensions
-	if srv.config.Provider.Docker != nil {
-		srv.extensions[service.ProviderDocker] = srv.config.Provider.Docker
-	}
-	if srv.config.Provider.Swarm != nil {
-		srv.extensions[service.ProviderSwarm] = srv.config.Provider.Swarm
-	}
-	if srv.config.Provider.Kubernetes != nil {
-		srv.extensions[service.ProviderKubernetes] = srv.config.Provider.Kubernetes
-	}
-	if srv.config.IPAM.IPAlloc != nil {
-		srv.extensions[service.IPAMFile] = srv.config.IPAM.IPAlloc
-	}
-	if srv.config.DNS.Consul != nil {
-		srv.extensions[service.DNSConsul] = srv.config.DNS.Consul
-	}
-	if srv.config.LoadBalancer.KempLM != nil {
-		srv.extensions[service.LBKempLM] = srv.config.LoadBalancer.KempLM
-	}
-
-	srv.workflow = initWorkflow()
-
-	// init flowEntries table
-	srv.flowEntries = newFlowEntries()
-	if err := srv.flowEntries.loadFile(srv.config.Core.FlowEntriesFile); err != nil {
-		logger.DefaultLogger().Errorf("Could not load entries from ipalloc: %v", err)
-
-	}
-
-	return srv, nil
-}
-
-func Start() {
-	Init()
-}
-
-// Init init and start the srv server
-func Init() {
-	logger.DefaultLogger().Printf("Starting server")
-	core, err := initServer()
-	if err != nil {
-		logger.DefaultLogger().Fatal(err)
-	}
-	core.start()
-}
-
-func (s *server) start() {
-	// start http server
-	go s.startHTTP()
-
-	// start flowControl
-	go func() {
-		for range s.flowControlTicker.C {
-			s.flowControl()
-		}
-	}()
-
-	// create channel for post exit cleanup
-	stopExtensions := make(chan bool)
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	signal.Notify(signalChan, os.Kill)
-
-	// start all configured extensions
-	for name, extension := range srv.extensions {
-		logger.DefaultLogger().Printf("adding %v to extensionChannels", name)
-		extensionChannels := newExtensionChannels(name)
-		s.extensionChannels[name] = extensionChannels
-
-		// start the extension's listener
-		go s.extensionListener(extensionChannels)
-
-		curExtension := extension
-		extensionChan := extensionChannels
-
-		go func() {
-			err := curExtension.Start(extensionChan.receive, extensionChan.send)
-			if err != nil {
-				logger.DefaultLogger().Errorf("Cannot start extension %v: %v\n", extensionChan.name, err)
-			}
-		}()
-	}
-	// handle SIGs and extensions clean shutdown
-	go func() {
-		for range signalChan {
-			logger.DefaultLogger().Println("Received interrupt, saving flow entries to ipalloc")
-			if err := s.flowEntries.save("./share/flowentries.db"); err != nil {
-				logger.DefaultLogger().Error(err.Error())
-			}
-
-			for name, extension := range s.extensions {
-				logger.DefaultLogger().Warnf("Stopping extension %v", name)
-				extension.Stop()
-			}
-			stopExtensions <- true
-		}
-	}()
-	<-stopExtensions
-}
-
-// extensionListener gets messages from extensions and send them to workflow
-// fill out message's Sender
-func (s *server) extensionListener(extension *extensionChannels) {
-	logger.DefaultLogger().Debugf("ExtensionListener is listening for %v", extension.name)
-	for {
-		newMessage := <-extension.send
-		newMessage.Sender = extension.name
-		// inject message/service to workflow
-		logger.DefaultLogger().Debugf("ExtensionListener %v received message, sending to flow control\n", extension.name)
-		if err := srv.flowEntries.mergeMessage(newMessage); err != nil {
-			logger.DefaultLogger().Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
-		}
-	}
-}
-
-// flowControl compares provided service with existing one
-// triggers required action(s) to bring service state
-// to desired state (deployed or undeployed)
-func (s *server) flowControl() {
-	logger.DefaultLogger().Debug("Running flowControl")
-
-	for k, v := range s.flowEntries.M {
-		if v.State != v.ExpectedState && !v.WorkInProgress {
-			var msg service.Message
-
-			if v.Error != "" {
-				logger.DefaultLogger().Warnf("Service %v is in error %v", v.Service.Name, v.Error)
-				continue
-			}
-
-			logger.DefaultLogger().Debugf("flowControl: Service %v current state differs from target state", k)
-			reverse := false
-			if v.ExpectedState == flowUndeployedState {
-				reverse = true
-			}
-
-			nextStep, err := s.workflow.getNextStep(v.State, reverse)
-			if err != nil {
-				logger.DefaultLogger().Errorf("Could not find next step for %v %v\n", k, err)
-				continue
-			}
-			logger.DefaultLogger().Debugf("next step: %v", nextStep)
-
-			if s.workflow.isLastStep(nextStep, reverse) {
-				logger.DefaultLogger().Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
-				s.flowEntries.closeEntry(k, reverse)
-				continue
-			}
-
-			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
-
-			if reverse {
-				msg.Action = service.MsgDeleteAction
-			} else {
-				msg.Action = service.MsgAddAction
-			}
-			msg.Service = v.Service
-
-			// get the extension channel to write message to
-			ext, ok := s.extensionChannels[nextStep]
-			if !ok {
-				logger.DefaultLogger().Errorf("flowControl could not find channel for ext %v\n", nextStep)
-				continue
-			}
-			ext.receive <- msg
-		}
-	}
 }

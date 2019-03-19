@@ -35,18 +35,21 @@ type ServerConfiguration struct {
 	DNS struct {
 		Consul *consul.Consul `yaml:"consul,omitempty"`
 	} `yaml:"dns,omitempty"`
-	LoadBalancer struct {
+	LB struct {
 		KempLM *kemplm.KempLM `yaml:"kemplm,omitempty"`
-	} `yaml:"loadbalancer,omitempty"`
+	} `yaml:"lb,omitempty"`
 }
 
-// ReadConfig parse the configuration ipalloc
+// ReadConfig parse the configuration
 func ReadConfig(file string) (*ServerConfiguration, error) {
 	var cfg ServerConfiguration
 	f, err := ioutil.ReadFile(file)
 	if err != nil {
 		return &cfg, err
 	}
-	yaml.Unmarshal(f, &cfg)
+	err = yaml.Unmarshal(f, &cfg)
+	if err != nil {
+		return &cfg, err
+	}
 	return &cfg, nil
 }
