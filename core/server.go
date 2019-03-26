@@ -22,6 +22,8 @@ var (
 	Version    string
 )
 
+// TODO: add deletion of closed, undeployed flowEntries (runner + time param?)
+
 // holds Interlook server config
 // Keeps a list of configured and started extensions
 type server struct {
@@ -97,7 +99,7 @@ func (s *server) initWorkflow() workflow {
 	}
 
 	// add run and end steps to workflow
-	// usefull if we want to use real transitions later
+	// useful if we want to use real transitions later
 	wf[0] = flowUndeployedState
 	wf[len(wf)] = flowDeployedState
 
@@ -215,14 +217,11 @@ func (s *server) flowControlRunner() {
 				log.Error(err.Error())
 			}
 			log.Infof("Saved flow entries to %v", s.config.Core.FlowEntriesFile)
-
 			s.coreWG.Done()
 			return
 		case <-s.flowControlTicker.C:
 			log.Debug("Running flowControl")
 			s.flowControl()
-			//FIXME: add safe criteria for deletion
-			//s.cleanUndeployed()
 		}
 	}
 }

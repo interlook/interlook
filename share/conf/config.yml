@@ -6,6 +6,7 @@ core:
   workflow: provider.docker,ipam.ipalloc,dns.consul,lb.kemplm
   checkFlowInterval: 5s
   flowEntriesFile: ./share/flowentries.db
+
 provider:
   docker:
     name: myDocker
@@ -32,3 +33,16 @@ lb:
     endpoint: https://192.168.99.2
     username: api
     password: apiPassw0rd
+    httpPort:
+    httpsPort:
+  f5ltm:
+    endpoint: https://192.168.99.2
+    username: api
+    password: apiPassw0rd
+    authProvider:
+    authToken:
+    httpPort:
+    httpsPort:
+    monitorName:
+    tcpProfile:
+
