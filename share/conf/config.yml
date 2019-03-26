@@ -19,15 +19,18 @@ provider:
     Watch: true
     WatchInterval: 10s
     updateInterval: 15s
+
 ipam:
   ipalloc:
     network_cidr: 192.168.99.0/24
     db_file: ./share/conf/allocated.db
+
 dns:
   consul:
     url: http://127.0.0.1:8500
     domain:
     token:
+
 lb:
   kemplm:
     endpoint: https://192.168.99.2

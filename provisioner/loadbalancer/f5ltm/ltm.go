@@ -11,8 +11,8 @@ import (
 	"net/http"
 )
 
-type Provisioner struct {
-	Endpoint     string
+type Extension struct {
+	Endpoint     string `yaml:"httpEndpoint"`
 	User         string `yaml:"username"`
 	Password     string `yaml:"password"`
 	AuthProvider string `yaml:"authProvider"`
@@ -25,154 +25,96 @@ type Provisioner struct {
 	shutdown     chan bool
 }
 
-type tokenResponse struct {
-	Username       string `json:"username"`
-	LoginReference struct {
-		Link string `json:"link"`
-	} `json:"loginReference"`
-	LoginProviderName string `json:"loginProviderName"`
-	Token             struct {
-		Token            string `json:"token"`
-		Name             string `json:"name"`
-		UserName         string `json:"userName"`
-		AuthProviderName string `json:"authProviderName"`
-		User             struct {
-			Link string `json:"link"`
-		} `json:"user"`
-		Timeout          int    `json:"timeout"`
-		StartTime        string `json:"startTime"`
-		Address          string `json:"address"`
-		Partition        string `json:"partition"`
-		Generation       int    `json:"generation"`
-		LastUpdateMicros int64  `json:"lastUpdateMicros"`
-		ExpirationMicros int64  `json:"expirationMicros"`
-		Kind             string `json:"kind"`
-		SelfLink         string `json:"selfLink"`
-	} `json:"token"`
-	Generation       int `json:"generation"`
-	LastUpdateMicros int `json:"lastUpdateMicros"`
-}
-
-// https://f5IP/mgmt/shared/authz/users/{user}
-type authSelfTestResponse struct {
-	Name             string `json:"name"`
-	DisplayName      string `json:"displayName"`
-	Shell            string `json:"shell"`
-	Generation       int    `json:"generation"`
-	LastUpdateMicros int    `json:"lastUpdateMicros"`
-	Kind             string `json:"kind"`
-	SelfLink         string `json:"selfLink"`
-}
-
-type transaction struct {
-	TransID          int64  `json:"transId"`
-	State            string `json:"state"`
-	TimeoutSeconds   int    `json:"timeoutSeconds"`
-	AsyncExecution   bool   `json:"asyncExecution"`
-	ValidateOnly     bool   `json:"validateOnly"`
-	ExecutionTimeout int    `json:"executionTimeout"`
-	ExecutionTime    int    `json:"executionTime"`
-	FailureReason    string `json:"failureReason"`
-	Kind             string `json:"kind"`
-	SelfLink         string `json:"selfLink"`
-}
-
-type getTokenPayload struct {
-	Username          string `json:"username"`
-	Password          string `json:"password"`
-	LoginProviderName string `json:"loginProviderName"`
-}
-
-type pool struct {
-	Name    string   `json:"name"`
-	Monitor string   `json:"monitor"`
-	Members []string `json:"members"`
-}
-
-type virtualServer struct {
-	Name                     string `json:"name"`
-	Destination              string `json:"destination"`
-	IPProtocol               string `json:"ipProtocol"`
-	Pool                     string `json:"pool"`
-	SourceAddressTranslation struct {
-		Type string `json:"type"`
-	} `json:"sourceAddressTranslation"`
-	Profiles []interface{} `json:"profiles"`
-}
-
-func (p *Provisioner) initialize() {
-	p.httpClient = makeHttpClient()
-	if p.HttpPort == 0 {
-		p.HttpPort = 80
+func (e *Extension) initialize() {
+	e.httpClient = makeHttpClient()
+	if e.HttpPort == 0 {
+		e.HttpPort = 80
 	}
-	if p.HttpsPort == 0 {
-		p.HttpsPort = 443
+	if e.HttpsPort == 0 {
+		e.HttpsPort = 443
 	}
 
-	p.shutdown = make(chan bool)
+	e.shutdown = make(chan bool)
 }
 
-func (p *Provisioner) Start(receive <-chan service.Message, send chan<- service.Message) error {
-	p.initialize()
-	if _, err := p.testConnection(); err != nil {
+func (e *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
+	e.initialize()
+	if _, err := e.testConnection(); err != nil {
 		return err
 	}
 	for {
 		select {
-		case <-p.shutdown:
+		case <-e.shutdown:
 			log.Info("Extension f5ltm down")
 			return nil
+
 		case msg := <-receive:
 			log.Debugf("Extension f5ltm received a message %v", msg)
+
+			switch msg.Action {
+			case service.MsgAddAction:
+				msg.Action = service.MsgUpdateAction
+
+				send <- msg
+			case service.MsgUpdateAction:
+				// check if vs and/or pool need to be changed
+
+				send <- msg
+
+			case service.MsgDeleteAction:
+
+				send <- msg
+
+			}
 		}
 	}
 }
 
-func (p *Provisioner) Stop() error {
-	p.shutdown <- true
+func (e *Extension) Stop() error {
+	e.shutdown <- true
 
 	return nil
 }
 
-func (p *Provisioner) isVirtualServerExists(vs virtualServer) (bool, error) {
+func (e *Extension) isVirtualServerExists(vs virtualServer) (bool, error) {
 	return false, nil
 }
 
-func (p *Provisioner) isPoolExists(pool pool) (bool, error) {
+func (e *Extension) isPoolExists(pool pool) (bool, error) {
 	return false, nil
 }
 
-func (p *Provisioner) isPoolSame(pool pool) (bool, error) {
+func (e *Extension) isPoolSame(pool pool) (bool, error) {
 	return false, nil
 }
 
-func (p *Provisioner) isVirtualServerSame(vs virtualServer) (bool, error) {
+func (e *Extension) isVirtualServerSame(vs virtualServer) (bool, error) {
 	return false, nil
 }
 
-func (p *Provisioner) addVirtualServer(vs virtualServer) error {
+func (e *Extension) addVirtualServer(vs virtualServer) error {
 	return nil
 }
 
-func (p *Provisioner) deleteVirtualServer(vs virtualServer) error {
+func (e *Extension) deleteVirtualServer(vs virtualServer) error {
 	return nil
 }
 
-func (p *Provisioner) addPool(pool pool) error {
+func (e *Extension) addPool(pool pool) error {
 	return nil
 }
 
-func (p *Provisioner) deletePool(pool pool) error {
+func (e *Extension) deletePool(pool pool) error {
 	return nil
 }
 
-func (p *Provisioner) testConnection() (httpRspCode int, err error) {
-	req, err := p.newAuthRequest(http.MethodGet, p.Endpoint+"/mgmt/shared/authz/tokens")
+func (e *Extension) testConnection() (httpRspCode int, err error) {
+	req, err := e.newAuthRequest(http.MethodGet, e.Endpoint+"/mgmt/shared/authz/tokens")
 	if err != nil {
 		return 0, err
 	}
 
-	_, httpCode, err := p.executeRequest(req)
+	_, httpCode, err := e.executeRequest(req)
 	if err != nil {
 		return httpCode, err
 	}
@@ -184,12 +126,12 @@ func (p *Provisioner) testConnection() (httpRspCode int, err error) {
 	return httpCode, nil
 }
 
-func (p *Provisioner) getAuthToken() error {
-	authPayload := &getTokenPayload{Username: p.User,
-		Password:          p.Password,
-		LoginProviderName: p.AuthProvider}
+func (e *Extension) getAuthToken() error {
+	authPayload := &getTokenPayload{Username: e.User,
+		Password:          e.Password,
+		LoginProviderName: e.AuthProvider}
 
-	authReq, err := http.NewRequest(http.MethodPost, p.Endpoint+"/mgmt/shared/authn/login", nil)
+	authReq, err := http.NewRequest(http.MethodPost, e.Endpoint+"/mgmt/shared/authn/login", nil)
 	if err != nil {
 		return errors.New("Could not authenticate " + err.Error())
 	}
@@ -200,7 +142,7 @@ func (p *Provisioner) getAuthToken() error {
 	}
 	authReq.Body = ioutil.NopCloser(bytes.NewReader(buf))
 
-	rsp, httpCode, err := p.executeRequest(authReq)
+	rsp, httpCode, err := e.executeRequest(authReq)
 	if err != nil {
 		return err
 	}
@@ -216,13 +158,13 @@ func (p *Provisioner) getAuthToken() error {
 		return err
 	}
 
-	p.AuthToken = tokenRsp.Token.Token
+	e.AuthToken = tokenRsp.Token.Token
 
 	return nil
 }
 
 // Returns a ready to execute request
-func (p *Provisioner) newAuthRequest(method, url string) (*http.Request, error) {
+func (e *Extension) newAuthRequest(method, url string) (*http.Request, error) {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return req, err
@@ -230,40 +172,40 @@ func (p *Provisioner) newAuthRequest(method, url string) (*http.Request, error) 
 
 	req.Header.Set("Content-Type", "application/json")
 
-	if p.AuthToken != "" {
-		rspCode, err := p.testConnection()
+	if e.AuthToken != "" {
+		rspCode, err := e.testConnection()
 		if err != nil {
 			// TODO: check if this is ok or if we should manage token ttl in sep object
 			if rspCode == 401 {
-				if err = p.getAuthToken(); err != nil {
+				if err = e.getAuthToken(); err != nil {
 					return req, err
 				}
-				if err := p.getAuthToken(); err != nil {
+				if err := e.getAuthToken(); err != nil {
 					return req, err
 				}
 			}
 		}
-		req.Header.Set("X-F5-Auth-Token", p.AuthToken)
+		req.Header.Set("X-F5-Auth-Token", e.AuthToken)
 		return req, err
 	}
 	// basic auth
-	if p.AuthProvider == "" {
-		req.SetBasicAuth(p.User, p.Password)
+	if e.AuthProvider == "" {
+		req.SetBasicAuth(e.User, e.Password)
 		return req, nil
 	}
 	// get new auth token
-	if err := p.getAuthToken(); err != nil {
+	if err := e.getAuthToken(); err != nil {
 		return req, err
 	}
-	req.Header.Set("X-F5-Auth-Token", p.AuthToken)
+	req.Header.Set("X-F5-Auth-Token", e.AuthToken)
 
 	return req, nil
 }
 
 // Executes the raw request, does not parse response
-func (p *Provisioner) executeRequest(r *http.Request) (body []byte, httpRspCode int, err error) {
+func (e *Extension) executeRequest(r *http.Request) (body []byte, httpRspCode int, err error) {
 
-	res, err := p.httpClient.Do(r)
+	res, err := e.httpClient.Do(r)
 	if err != nil {
 		log.Error(err.Error())
 		return nil, 0, err

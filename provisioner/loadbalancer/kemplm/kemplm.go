@@ -64,6 +64,12 @@ func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Messa
 				}
 				send <- msg
 
+			case service.MsgUpdateAction:
+				// check if rs and or vs needs to be updated
+				// delete vs
+				// create vs and rs
+				send <- msg
+
 			case service.MsgDeleteAction:
 				msg.Action = service.MsgUpdateAction
 
