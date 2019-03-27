@@ -4,9 +4,9 @@ import "reflect"
 
 const (
 	//define message actions
-	MsgAddAction    = "add"
-	MsgUpdateAction = "update"
-	MsgDeleteAction = "delete"
+	AddAction    = "add"
+	UpdateAction = "update"
+	DeleteAction = "delete"
 )
 
 // Message holds config information with providers
@@ -36,18 +36,18 @@ type Service struct {
 // against current definition
 // hosts list, port and tls
 // returns a list of fields that differ
-func (s *Service) IsSameThan(to Service) (bool, []string) {
+func (s *Service) IsSameThan(targetService Service) (bool, []string) {
 	var diff []string
-	if !reflect.DeepEqual(s.DNSAliases, to.DNSAliases) {
+	if !reflect.DeepEqual(s.DNSAliases, targetService.DNSAliases) {
 		diff = append(diff, "DNSNames")
 	}
-	if s.Port != to.Port {
+	if s.Port != targetService.Port {
 		diff = append(diff, "Port")
 	}
-	if s.TLS != to.TLS {
+	if s.TLS != targetService.TLS {
 		diff = append(diff, "TLS")
 	}
-	if !reflect.DeepEqual(s.Hosts, to.Hosts) {
+	if !reflect.DeepEqual(s.Hosts, targetService.Hosts) {
 		diff = append(diff, "Hosts")
 	}
 	if len(diff) > 0 {

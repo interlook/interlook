@@ -50,8 +50,8 @@ func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Messa
 		case msg := <-receive:
 			log.Debugf("Extension kemplm received a message")
 			switch msg.Action {
-			case service.MsgAddAction:
-				msg.Action = service.MsgUpdateAction
+			case service.AddAction:
+				msg.Action = service.UpdateAction
 
 				if err := k.addVS(msg); err != nil {
 					log.Debugf("error %v in addVS", err.Error())
@@ -64,14 +64,14 @@ func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Messa
 				}
 				send <- msg
 
-			case service.MsgUpdateAction:
+			case service.UpdateAction:
 				// check if rs and or vs needs to be updated
 				// delete vs
 				// create vs and rs
 				send <- msg
 
-			case service.MsgDeleteAction:
-				msg.Action = service.MsgUpdateAction
+			case service.DeleteAction:
+				msg.Action = service.UpdateAction
 
 				exist, err := k.isVSDefined(msg)
 				if err != nil {

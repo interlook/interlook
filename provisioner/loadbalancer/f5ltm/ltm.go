@@ -11,6 +11,11 @@ import (
 	"net/http"
 )
 
+const (
+	virtualServerResource = "virtual"
+	poolResource          = "poolResource"
+)
+
 type Extension struct {
 	Endpoint     string `yaml:"httpEndpoint"`
 	User         string `yaml:"username"`
@@ -52,16 +57,25 @@ func (e *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 			log.Debugf("Extension f5ltm received a message %v", msg)
 
 			switch msg.Action {
-			case service.MsgAddAction:
-				msg.Action = service.MsgUpdateAction
+			case service.AddAction:
+				msg.Action = service.UpdateAction
+				// check if virtual server already exist
+				exist, err := e.isResourceExists(msg.Service.Name, virtualServerResource)
+				if err != nil {
+					msg.Error = err.Error()
+				}
+				// check if pool attached to vs needs to be changed
+				if exist {
+
+				}
 
 				send <- msg
-			case service.MsgUpdateAction:
-				// check if vs and/or pool need to be changed
+			case service.UpdateAction:
+				// check if vs and/or poolResource need to be changed
 
 				send <- msg
 
-			case service.MsgDeleteAction:
+			case service.DeleteAction:
 
 				send <- msg
 
@@ -76,19 +90,76 @@ func (e *Extension) Stop() error {
 	return nil
 }
 
-func (e *Extension) isVirtualServerExists(vs virtualServer) (bool, error) {
-	return false, nil
+func (e *Extension) getVirtualServerByName(poolName string) (vs virtualServerResponse, err error) {
+
+	req, err := e.newAuthRequest(http.MethodGet, e.Endpoint+"/mgmt/tm/ltm/pool/"+poolName)
+	if err != nil {
+		return vs, err
+	}
+
+	response, httpCode, err := e.executeRequest(req)
+	if err != nil {
+		return vs, err
+	}
+	if httpCode != 200 {
+		return vs, err
+	}
+
+	err = json.Unmarshal(response, &vs)
+	if err != nil {
+		return vs, err
+	}
+
+	return vs, nil
 }
 
-func (e *Extension) isPoolExists(pool pool) (bool, error) {
-	return false, nil
+func (e *Extension) getPoolMembers(poolName string) (members map[string]string, err error) {
+	members = make(map[string]string)
+	var membersResponse poolMembersResponse
+	req, err := e.newAuthRequest(http.MethodGet, e.Endpoint+"/mgmt/tm/ltm/pool/"+poolName)
+	if err != nil {
+		return members, err
+	}
+
+	response, httpCode, err := e.executeRequest(req)
+	if err != nil {
+		return members, err
+	}
+	if httpCode != 200 {
+		return members, err
+	}
+
+	err = json.Unmarshal(response, &membersResponse)
+	if err != nil {
+		return members, err
+	}
+
+	for _, member := range membersResponse.Items {
+		members[member.Address] = member.FullPath
+	}
+
+	return members, nil
 }
 
-func (e *Extension) isPoolSame(pool pool) (bool, error) {
-	return false, nil
+func (e *Extension) isResourceExists(resourceName, resourceType string) (bool, error) {
+
+	req, err := e.newAuthRequest(http.MethodGet, e.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+resourceName)
+	if err != nil {
+		return false, err
+	}
+
+	_, httpCode, err := e.executeRequest(req)
+	if err != nil {
+		return false, err
+	}
+	if httpCode != 200 {
+		return false, err
+	}
+
+	return true, nil
 }
 
-func (e *Extension) isVirtualServerSame(vs virtualServer) (bool, error) {
+func (e *Extension) isPoolMembersSame(vs virtualServer) (bool, error) {
 	return false, nil
 }
 
@@ -203,7 +274,7 @@ func (e *Extension) newAuthRequest(method, url string) (*http.Request, error) {
 }
 
 // Executes the raw request, does not parse response
-func (e *Extension) executeRequest(r *http.Request) (body []byte, httpRspCode int, err error) {
+func (e *Extension) executeRequest(r *http.Request) (responseBody []byte, httpCode int, err error) {
 
 	res, err := e.httpClient.Do(r)
 	if err != nil {
@@ -233,9 +304,10 @@ func (r *request) setJSONBody(val interface{}) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	r.Body = ioutil.NopCloser(bytes.NewReader(buf))
-	return nil
 
+	r.Body = ioutil.NopCloser(bytes.NewReader(buf))
+
+	return nil
 }
 
 func makeHttpClient() http.Client {
