@@ -12,6 +12,12 @@ type pool struct {
 	Members []string `json:"members"`
 }
 
+type poolMembers struct {
+	Members []struct {
+		Address string `json:"address"`
+	} `json:"members"`
+}
+
 type virtualServer struct {
 	Name                     string `json:"name"`
 	Destination              string `json:"destination"`

@@ -9,6 +9,9 @@ import (
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
+	"reflect"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -57,24 +60,44 @@ func (e *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 			log.Debugf("Extension f5ltm received a message %v", msg)
 
 			switch msg.Action {
-			case service.AddAction:
+			case service.AddAction, service.UpdateAction:
 				msg.Action = service.UpdateAction
-				// check if virtual server already exist
-				exist, err := e.isResourceExists(msg.Service.Name, virtualServerResource)
+				// check if virtual server already vsExist
+				vsExist := true
+				currentVirtual, err := e.getVirtualServerByName(msg.Service.Name)
 				if err != nil {
-					msg.Error = err.Error()
+					vsExist = false
 				}
 				// check if pool attached to vs needs to be changed
-				if exist {
+				if vsExist {
+					members, port, err := e.getPoolMembers(msg.Service.Name)
+					if err != nil {
+						msg.Error = err.Error()
+					}
+					// check if current pool is as defined in msg
+					if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != port {
+						// hosts differ, patch f5 pool
+						if err := e.patchPoolMembers(msg); err != nil {
+							msg.Error = err.Error()
+						}
+						log.Debugf("pool %v: port differs", msg.Service.Name)
+						send <- msg
+						continue
+					}
+					// check if virtual's IP is the one we got in msg
+					if !strings.Contains(currentVirtual.Destination, msg.Service.PublicIP+":"+strconv.Itoa(msg.Service.Port)) {
+						if err := e.patchPoolDestination(currentVirtual, msg.Service.PublicIP, strconv.Itoa(e.getLBPort(msg))); err != nil {
+							msg.Error = err.Error()
+						}
+					}
+					send <- msg
+					continue
 
 				}
+				log.Debugf("%v not found, creating pool and virtual", msg.Service.Name)
+				//TODO: create vs and pool
 
 				send <- msg
-			case service.UpdateAction:
-				// check if vs and/or poolResource need to be changed
-
-				send <- msg
-
 			case service.DeleteAction:
 
 				send <- msg
@@ -84,8 +107,57 @@ func (e *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 	}
 }
 
+func (e *Extension) getLBPort(msg service.Message) int {
+	if !msg.Service.TLS {
+		return e.HttpPort
+	}
+	return e.HttpsPort
+}
+
 func (e *Extension) Stop() error {
 	e.shutdown <- true
+
+	return nil
+}
+
+func (e *Extension) patchPoolDestination(vs virtualServerResponse, ip, port string) error {
+
+	req, err := e.newAuthRequest(http.MethodPatch, e.Endpoint+"/mgmt/tm/ltm/virtual/")
+	if err != nil {
+		return err
+	}
+	destinationCurrentHostPort := vs.Destination[strings.LastIndex(vs.Destination, "/")+1:]
+	destination := strings.TrimRight(vs.Destination, destinationCurrentHostPort) + ip + ":" + port
+
+	buf, err := json.Marshal(destination)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	req.Body = ioutil.NopCloser(bytes.NewReader(buf))
+
+	return nil
+}
+
+func (e *Extension) patchPoolMembers(msg service.Message) error {
+
+	var newPoolMembers poolMembers
+
+	for k, host := range msg.Service.Hosts {
+		newPoolMembers.Members[k].Address = host + strconv.Itoa(msg.Service.Port)
+	}
+
+	req, err := e.newAuthRequest(http.MethodPatch, e.Endpoint+"/mgmt/tm/ltm/pool/"+msg.Service.Name)
+	if err != nil {
+		return err
+	}
+
+	buf, err := json.Marshal(newPoolMembers)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	req.Body = ioutil.NopCloser(bytes.NewReader(buf))
 
 	return nil
 }
@@ -113,32 +185,37 @@ func (e *Extension) getVirtualServerByName(poolName string) (vs virtualServerRes
 	return vs, nil
 }
 
-func (e *Extension) getPoolMembers(poolName string) (members map[string]string, err error) {
-	members = make(map[string]string)
+func (e *Extension) getPoolMembers(poolName string) (members []string, port int, err error) {
+
 	var membersResponse poolMembersResponse
 	req, err := e.newAuthRequest(http.MethodGet, e.Endpoint+"/mgmt/tm/ltm/pool/"+poolName)
 	if err != nil {
-		return members, err
+		return members, port, err
 	}
 
 	response, httpCode, err := e.executeRequest(req)
 	if err != nil {
-		return members, err
+		return members, port, err
 	}
 	if httpCode != 200 {
-		return members, err
+		return members, port, err
 	}
 
 	err = json.Unmarshal(response, &membersResponse)
 	if err != nil {
-		return members, err
+		return members, port, err
 	}
 
 	for _, member := range membersResponse.Items {
-		members[member.Address] = member.FullPath
+		i := strings.LastIndex(member.FullPath, ":")
+		port, err = strconv.Atoi(member.FullPath[i+1:])
+		if err != nil {
+			return members, port, err
+		}
+		members = append(members, member.Address)
 	}
 
-	return members, nil
+	return members, port, nil
 }
 
 func (e *Extension) isResourceExists(resourceName, resourceType string) (bool, error) {
