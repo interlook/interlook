@@ -27,6 +27,8 @@ github.com/docker/go-connections/tlsconfig
 github.com/docker/go-connections/nat
 # github.com/docker/go-units v0.3.3
 github.com/docker/go-units
+# github.com/fatih/structs v1.1.0
+github.com/fatih/structs
 # github.com/hashicorp/consul v1.4.3
 github.com/hashicorp/consul/api
 # github.com/hashicorp/go-cleanhttp v0.5.0

@@ -6,6 +6,7 @@ core:
   workflow: provider.docker,ipam.ipalloc,dns.consul,lb.kemplm
   checkFlowInterval: 5s
   flowEntriesFile: ./share/flowentries.db
+
 provider:
   docker:
     name: myDocker
@@ -18,17 +19,33 @@ provider:
     Watch: true
     WatchInterval: 10s
     updateInterval: 15s
+
 ipam:
   ipalloc:
     network_cidr: 192.168.99.0/24
     db_file: ./share/conf/allocated.db
+
 dns:
   consul:
     url: http://127.0.0.1:8500
     domain:
     token:
+
 lb:
   kemplm:
     endpoint: https://192.168.99.2
     username: api
     password: apiPassw0rd
+    httpPort:
+    httpsPort:
+  f5ltm:
+    endpoint: https://192.168.99.2
+    username: api
+    password: apiPassw0rd
+    authProvider:
+    authToken:
+    httpPort:
+    httpsPort:
+    monitorName:
+    tcpProfile:
+

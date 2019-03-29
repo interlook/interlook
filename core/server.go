@@ -22,6 +22,8 @@ var (
 	Version    string
 )
 
+// TODO: add deletion of closed, undeployed workflowEntries (runner + time param?)
+
 // holds Interlook server config
 // Keeps a list of configured and started extensions
 type server struct {
@@ -31,7 +33,7 @@ type server struct {
 	extensions        map[string]Extension
 	extensionChannels map[string]*extensionChannels
 	workflow          workflow
-	flowEntries       *flowEntries
+	flowEntries       *workflowEntries
 	flowChan          chan service.Message
 	flowControlTicker *time.Ticker
 	coreWG            sync.WaitGroup // waitgroup for core processes sync
@@ -78,8 +80,8 @@ func initServer() (server, error) {
 	// init configured extensions
 	s.initExtensions()
 
-	// init flowEntries table
-	s.flowEntries = newFlowEntries()
+	// init workflowEntries table
+	s.flowEntries = initWorkflowEntries()
 	if err := s.flowEntries.loadFile(s.config.Core.FlowEntriesFile); err != nil {
 		log.Errorf("Could not load entries from file: %v", err)
 	}
@@ -97,9 +99,9 @@ func (s *server) initWorkflow() workflow {
 	}
 
 	// add run and end steps to workflow
-	// usefull if we want to use real transitions later
-	wf[0] = flowUndeployedState
-	wf[len(wf)] = flowDeployedState
+	// useful if we want to use real transitions later
+	wf[0] = undeployedState
+	wf[len(wf)] = deployedState
 
 	return wf
 }
@@ -134,9 +136,9 @@ func (s *server) run() {
 	signal.Notify(s.signals, os.Interrupt)
 	signal.Notify(s.signals, os.Kill)
 
-	// run flowControl
+	// run workflowControl
 	s.coreWG.Add(1)
-	go s.flowControlRunner()
+	go s.workflowControlRunner()
 
 	// start all configured extensions
 	// for each one, starts a dedicated listener goroutine
@@ -199,14 +201,14 @@ func (s *server) extensionListener(extension *extensionChannels) {
 		log.Debugf("Received message from %v, sending to flow control\n", extension.name)
 
 		// inject message to workflow
-		if err := s.flowEntries.mergeMessage(newMessage); err != nil {
+		if err := s.flowEntries.messageHandler(newMessage); err != nil {
 			log.Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
 		}
 	}
 }
 
-// flowControlRunner runs flowControl every x seconds
-func (s *server) flowControlRunner() {
+// workflowControlRunner runs workflowControl every x seconds
+func (s *server) workflowControlRunner() {
 	for {
 		select {
 		case <-s.coreShutdown:
@@ -215,22 +217,19 @@ func (s *server) flowControlRunner() {
 				log.Error(err.Error())
 			}
 			log.Infof("Saved flow entries to %v", s.config.Core.FlowEntriesFile)
-
 			s.coreWG.Done()
 			return
 		case <-s.flowControlTicker.C:
-			log.Debug("Running flowControl")
-			s.flowControl()
-			//FIXME: add safe criteria for deletion
-			//s.cleanUndeployed()
+			log.Debug("Running workflowControl")
+			s.workflowControl()
 		}
 	}
 }
 
-// flowControl compares received service definition with existing one
+// workflowControl compares received service definition with existing one
 // triggers required action(s) to bring service state
 // to desired state (deployed or undeployed)
-func (s *server) flowControl() {
+func (s *server) workflowControl() {
 	for k, v := range s.flowEntries.M {
 		if v.State != v.ExpectedState && !v.WorkInProgress {
 			var msg service.Message
@@ -240,9 +239,9 @@ func (s *server) flowControl() {
 				continue
 			}
 
-			log.Debugf("flowControl: Service %v current state differs from target state", k)
+			log.Debugf("workflowControl: Service %v current state differs from target state", k)
 			reverse := false
-			if v.ExpectedState == flowUndeployedState {
+			if v.ExpectedState == undeployedState {
 				reverse = true
 			}
 
@@ -262,16 +261,16 @@ func (s *server) flowControl() {
 			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
 
 			if reverse {
-				msg.Action = service.MsgDeleteAction
+				msg.Action = service.DeleteAction
 			} else {
-				msg.Action = service.MsgAddAction
+				msg.Action = service.AddAction
 			}
 
 			msg.Service = v.Service
 			// get the extension channel to write message to
 			ext, ok := s.extensionChannels[nextStep]
 			if !ok {
-				log.Errorf("flowControl could not find channel for ext %v\n", nextStep)
+				log.Errorf("workflowControl could not find channel for ext %v\n", nextStep)
 				continue
 			}
 
@@ -284,7 +283,7 @@ func (s *server) cleanUndeployed() {
 	s.flowEntries.Lock()
 	defer s.flowEntries.Unlock()
 	for k, v := range s.flowEntries.M {
-		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == flowUndeployedState {
+		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == undeployedState {
 			delete(s.flowEntries.M, k)
 		}
 	}

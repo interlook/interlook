@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/bhuisgen/interlook/provisioner/dns/consul"
+	"github.com/bhuisgen/interlook/provisioner/loadbalancer/f5ltm"
 	"github.com/bhuisgen/interlook/provisioner/loadbalancer/kemplm"
 	"io/ioutil"
 	"time"
@@ -37,17 +38,18 @@ type ServerConfiguration struct {
 	} `yaml:"dns,omitempty"`
 	LB struct {
 		KempLM *kemplm.KempLM `yaml:"kemplm,omitempty"`
+		F5LTM  *f5ltm.BigIP   `yaml:"f5ltm,omitempty"`
 	} `yaml:"lb,omitempty"`
 }
 
 // ReadConfig parse the configuration
-func ReadConfig(file string) (*ServerConfiguration, error) {
+func ReadConfig(filename string) (*ServerConfiguration, error) {
 	var cfg ServerConfiguration
-	f, err := ioutil.ReadFile(file)
+	file, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return &cfg, err
 	}
-	err = yaml.Unmarshal(f, &cfg)
+	err = yaml.Unmarshal(file, &cfg)
 	if err != nil {
 		return &cfg, err
 	}

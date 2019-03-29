@@ -44,9 +44,9 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 		select {
 		case msg := <-receive:
 			switch msg.Action {
-			case service.MsgDeleteAction:
+			case service.DeleteAction:
 				log.Debugf("request to delete dns for %v", msg.Service.Name)
-				msg.Action = service.MsgUpdateAction
+				msg.Action = service.UpdateAction
 				for _, dnsAlias := range msg.Service.DNSAliases {
 					if err := c.deregister(dnsAlias); err != nil {
 						msg.Error = err.Error()
@@ -55,7 +55,7 @@ func (c *Consul) Start(receive <-chan service.Message, send chan<- service.Messa
 				}
 
 			default:
-				msg.Action = service.MsgUpdateAction
+				msg.Action = service.UpdateAction
 				var servicePort int
 				if msg.Service.TLS {
 					servicePort = 443

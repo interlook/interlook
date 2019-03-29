@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	flowDeployedState   = "deployed"
-	flowUndeployedState = "undeployed"
+	deployedState   = "deployed"
+	undeployedState = "undeployed"
 )
 
 // workflow holds the sequence of "steps" an item must follow to be deployed or undeployed
@@ -40,19 +40,19 @@ func (w workflow) isLastStep(step string, reverse bool) bool {
 
 // getNextStep returns the next step for a given step
 // set reverse to true to get next step when undeploying a service
-func (w workflow) getNextStep(step string, reverse bool) (next string, err error) {
+func (w workflow) getNextStep(currentStep string, reverse bool) (nextStep string, err error) {
 	found := false
 	var index int
 
 	for k, v := range w {
-		if v == step {
+		if v == currentStep {
 			found = true
 			index = k
 		}
 	}
 
 	if !found {
-		return next, errors.New("could not find step in workflow")
+		return nextStep, errors.New("could not find currentStep in workflow")
 	}
 
 	if reverse {
@@ -62,20 +62,20 @@ func (w workflow) getNextStep(step string, reverse bool) (next string, err error
 	}
 
 	ok := false
-	if next, ok = w[index]; !ok {
-		return "", errors.New("could not find next step in workflow")
+	if nextStep, ok = w[index]; !ok {
+		return "", errors.New("could not find nextStep currentStep in workflow")
 	}
 
 	// we do not send messages to providers
-	if strings.Contains(next, "provider.") {
-		next, _ = w.getNextStep(next, reverse)
+	if strings.Contains(nextStep, "provider.") {
+		nextStep, _ = w.getNextStep(nextStep, reverse)
 	}
 
-	return next, nil
+	return nextStep, nil
 }
 
-// flowEntry represents a tracked service
-type flowEntry struct {
+// workflowEntry represents a tracked service
+type workflowEntry struct {
 	// current step in the workflow
 	//CurrentState string `json:"current_state,omitempty"`
 	// Indicates if an extension is currently working on the item
@@ -98,17 +98,17 @@ type flowEntry struct {
 	CloseTime  time.Time       `json:"close_time"`
 }
 
-func makeNewFlowEntry() flowEntry {
-	var ne flowEntry
+func makeNewFlowEntry() workflowEntry {
+	var ne workflowEntry
 	ne.TimeDetected = time.Now()
 
 	return ne
 }
 
-func (fe *flowEntry) isStateAsWanted(action string) bool {
-	if fe.ExpectedState == fe.State &&
-		((fe.State == flowDeployedState && action == service.MsgAddAction) ||
-			(fe.State == flowUndeployedState && action == service.MsgDeleteAction)) {
+func (we *workflowEntry) isStateAsWanted(action string) bool {
+	if we.ExpectedState == we.State &&
+		((we.State == deployedState && action == service.AddAction) ||
+			(we.State == undeployedState && action == service.DeleteAction)) {
 		log.Debug("service state is OK")
 		return true
 	}
@@ -116,27 +116,27 @@ func (fe *flowEntry) isStateAsWanted(action string) bool {
 	return false
 }
 
-// flowEntries holds the table of tracked services
-type flowEntries struct {
+// workflowEntries holds the table of tracked services
+type workflowEntries struct {
 	sync.Mutex
-	M map[string]*flowEntry `json:"entries,omitempty"`
+	M map[string]*workflowEntry `json:"entries,omitempty"`
 }
 
-func newFlowEntries() *flowEntries {
-	fe := new(flowEntries)
-	fe.M = make(map[string]*flowEntry)
+func initWorkflowEntries() *workflowEntries {
+	fe := new(workflowEntries)
+	fe.M = make(map[string]*workflowEntry)
 
 	return fe
 }
 
-// mergeMessage manages messages received from extensions
-func (f *flowEntries) mergeMessage(msg service.Message) error {
-	log.Debugf("mergeMessage received %v\n", msg)
+// messageHandler manages messages received from extensions
+func (we *workflowEntries) messageHandler(msg service.Message) error {
+	log.Debugf("messageHandler received %v\n", msg)
 	var serviceExist, serviceUnchanged, serviceStateOK bool
 
 	// check if we already have this service
 	serviceExist = true
-	curSvc, err := f.getServiceByName(msg.Service.Name)
+	curSvc, err := we.getServiceByName(msg.Service.Name)
 	if err != nil {
 		log.Debugf("Service %v: %v", msg.Service.Name, err)
 		serviceExist = false
@@ -144,7 +144,7 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 
 	// check if service needs to be updated and if current state is as expected
 	if serviceExist {
-		log.Debugf("mergeMessage service %v exist\n", msg.Service.Name)
+		log.Debugf("messageHandler service %v exist\n", msg.Service.Name)
 		// Check service spec has not changed
 		serviceUnchanged, _ = curSvc.Service.IsSameThan(msg.Service)
 		// Check current state is as requested by msg
@@ -152,35 +152,35 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 	}
 
 	// if no changes are needed on existing service, we do nothing
-	if serviceUnchanged && msg.Action == service.MsgAddAction && serviceStateOK {
+	if serviceUnchanged && msg.Action == service.AddAction && serviceStateOK {
 		log.Debugf("Service %v already in desired state\n", msg.Service.Name)
 		return nil
 	}
 
 	switch msg.Action {
-	case service.MsgAddAction, service.MsgUpdateAction:
-		f.Lock()
-		defer f.Unlock()
+	case service.AddAction, service.UpdateAction:
+		we.Lock()
+		defer we.Unlock()
 
 		if !serviceExist {
 			ne := makeNewFlowEntry()
-			f.M[msg.Service.Name] = &ne
+			we.M[msg.Service.Name] = &ne
 		}
 		// only provider can change desired state
 		if strings.Contains(msg.Sender, "provider.") {
-			f.M[msg.Service.Name].ExpectedState = flowDeployedState
+			we.M[msg.Service.Name].ExpectedState = deployedState
 		}
 
-		f.M[msg.Service.Name].State = msg.Sender
-		f.M[msg.Service.Name].Service = msg.Service
-		f.M[msg.Service.Name].WorkInProgress = false
-		f.M[msg.Service.Name].Error = msg.Error
+		we.M[msg.Service.Name].State = msg.Sender
+		we.M[msg.Service.Name].Service = msg.Service
+		we.M[msg.Service.Name].WorkInProgress = false
+		we.M[msg.Service.Name].Error = msg.Error
 
-	case service.MsgDeleteAction:
-		f.Lock()
-		defer f.Unlock()
-		f.M[msg.Service.Name].ExpectedState = flowUndeployedState
-		f.M[msg.Service.Name].LastUpdate = time.Now()
+	case service.DeleteAction:
+		we.Lock()
+		defer we.Unlock()
+		we.M[msg.Service.Name].ExpectedState = undeployedState
+		we.M[msg.Service.Name].LastUpdate = time.Now()
 
 	default:
 		log.Warnf("mergeToFlow could not handle %v action\n", msg.Action)
@@ -190,8 +190,8 @@ func (f *flowEntries) mergeMessage(msg service.Message) error {
 	return nil
 }
 
-func (f *flowEntries) getServiceByName(name string) (*flowEntry, error) {
-	res, ok := f.M[name]
+func (we *workflowEntries) getServiceByName(name string) (*workflowEntry, error) {
+	res, ok := we.M[name]
 	if !ok {
 		return res, errors.New(fmt.Sprintf("No entry found for %v", name))
 	}
@@ -199,41 +199,41 @@ func (f *flowEntries) getServiceByName(name string) (*flowEntry, error) {
 	return res, nil
 }
 
-func (f *flowEntries) prepareForNextStep(entry, step string, reverse bool) {
-	f.Lock()
-	f.M[entry].WorkInProgress = true
-	f.M[entry].WIPTime = time.Now()
-	f.M[entry].State = step
-	f.Unlock()
+func (we *workflowEntries) prepareForNextStep(entry, step string, reverse bool) {
+	we.Lock()
+	we.M[entry].WorkInProgress = true
+	we.M[entry].WIPTime = time.Now()
+	we.M[entry].State = step
+	we.Unlock()
 }
 
-func (f *flowEntries) closeEntry(key string, reverse bool) {
-	f.Lock()
-	f.M[key].WorkInProgress = false
-	f.M[key].WIPTime = time.Time{}
-	f.M[key].CloseTime = time.Now()
+func (we *workflowEntries) closeEntry(serviceName string, reverse bool) {
+	we.Lock()
+	we.M[serviceName].WorkInProgress = false
+	we.M[serviceName].WIPTime = time.Time{}
+	we.M[serviceName].CloseTime = time.Now()
 
 	if reverse {
-		f.M[key].State = flowUndeployedState
+		we.M[serviceName].State = undeployedState
 	} else {
-		f.M[key].State = flowDeployedState
+		we.M[serviceName].State = deployedState
 	}
 
-	f.Unlock()
+	we.Unlock()
 }
 
-func (f *flowEntries) save(file string) error {
-	dbFile, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0644)
+func (we *workflowEntries) save(filename string) error {
+	dbFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if err := dbFile.Close(); err != nil {
-			log.Errorf("Error closing file %v", err)
+			log.Errorf("Error closing filename %v", err)
 		}
 	}()
 
-	data, err := json.Marshal(f.M)
+	data, err := json.Marshal(we.M)
 	if err != nil {
 		return err
 	}
@@ -250,13 +250,13 @@ func (f *flowEntries) save(file string) error {
 	return nil
 }
 
-func (f *flowEntries) loadFile(file string) error {
-	dbFile, err := ioutil.ReadFile(file)
+func (we *workflowEntries) loadFile(filename string) error {
+	dbFile, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
 
-	if err = json.Unmarshal(dbFile, &f.M); err != nil {
+	if err = json.Unmarshal(dbFile, &we.M); err != nil {
 		return err
 	}
 

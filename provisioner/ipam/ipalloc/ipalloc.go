@@ -70,8 +70,8 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 			log.Debugf("ipam.ipalloc received message %v\n", msg)
 
 			switch msg.Action {
-			case service.MsgDeleteAction:
-				msg.Action = service.MsgUpdateAction
+			case service.DeleteAction:
+				msg.Action = service.UpdateAction
 				if err := p.deleteService(msg.Service.Name); err != nil {
 					log.Errorf("Error deleting service %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
@@ -87,7 +87,7 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 				// check if service is already defined
 				// if yes send back msg with update action
 				// if not, get new IPAM, update service def and send back msg
-				msg.Action = service.MsgUpdateAction
+				msg.Action = service.UpdateAction
 
 				if p.serviceExist(&msg) {
 					log.Debugf("service %v already exist", msg.Service.Name)
