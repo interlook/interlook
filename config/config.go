@@ -37,8 +37,8 @@ type ServerConfiguration struct {
 		Consul *consul.Consul `yaml:"consul,omitempty"`
 	} `yaml:"dns,omitempty"`
 	LB struct {
-		KempLM *kemplm.KempLM   `yaml:"kemplm,omitempty"`
-		F5LTM  *f5ltm.Extension `yaml:"f5ltm,omitempty"`
+		KempLM *kemplm.KempLM `yaml:"kemplm,omitempty"`
+		F5LTM  *f5ltm.BigIP   `yaml:"f5ltm,omitempty"`
 	} `yaml:"lb,omitempty"`
 }
 
