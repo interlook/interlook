@@ -7,22 +7,28 @@ type getTokenPayload struct {
 }
 
 type pool struct {
-	Name    string   `json:"name"`
-	Monitor string   `json:"monitor"`
-	Members []string `json:"members"`
+	Name              string   `json:"name"`
+	Monitor           string   `json:"monitor"`
+	Description       string   `json:"description"`
+	LoadBalancingMode string   `json:"loadBalancingMode"`
+	Members           []string `json:"members"`
 }
 
 type poolMembers struct {
-	Members []struct {
-		Address string `json:"address"`
-	} `json:"members"`
+	Members []member `json:"members"`
+}
+
+type member struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
 }
 
 type virtualServer struct {
 	Name                     string `json:"name"`
+	Description              string `json:"description"`
 	Destination              string `json:"destination"`
 	IPProtocol               string `json:"ipProtocol"`
-	Pool                     string `json:"poolResource"`
+	Pool                     string `json:"pool"`
 	SourceAddressTranslation struct {
 		Type string `json:"type"`
 	} `json:"sourceAddressTranslation"`

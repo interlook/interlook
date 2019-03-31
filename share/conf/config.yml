@@ -3,7 +3,7 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : stdout
-  workflow: provider.docker,ipam.ipalloc,dns.consul,lb.kemplm
+  workflow: provider.docker,ipam.ipalloc,lb.f5ltm
   checkFlowInterval: 5s
   flowEntriesFile: ./share/flowentries.db
 
@@ -22,8 +22,8 @@ provider:
 
 ipam:
   ipalloc:
-    network_cidr: 192.168.99.0/24
-    db_file: ./share/conf/allocated.db
+    network_cidr: 10.32.30.0/24
+    db_file: ./share/ipalloc.db
 
 dns:
   consul:
@@ -36,16 +36,18 @@ lb:
     endpoint: https://192.168.99.2
     username: api
     password: apiPassw0rd
-    httpPort:
-    httpsPort:
+    httpPort: 80
+    httpsPort: 443
   f5ltm:
-    endpoint: https://192.168.99.2
+    httpEndpoint: https://10.32.20.100
     username: api
-    password: apiPassw0rd
-    authProvider:
+    password: default
+    authProvider: tmos
     authToken:
-    httpPort:
-    httpsPort:
-    monitorName:
+    httpPort: 80
+    httpsPort: 443
+    monitorName: tcp
     tcpProfile:
+    partition:
+    loadBalancingMode: least-connections-member
 
