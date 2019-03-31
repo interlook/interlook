@@ -19,6 +19,7 @@ const (
 	virtualServerResource = "/mgmt/tm/ltm/virtual/"
 	poolResource          = "/mgmt/tm/ltm/pool/"
 	loginResource         = "/mgmt/shared/authn/login"
+	selfUserResource      = "/mgmt/shared/authz/users/"
 )
 
 type BigIP struct {
@@ -150,7 +151,7 @@ func (b *BigIP) Stop() error {
 
 func (b *BigIP) getVirtualServerByName(poolName string) (vs virtualServerResponse, err error) {
 
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+poolName)
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.getNameWithPartition(poolName))
 	if err != nil {
 		return vs, err
 	}
@@ -178,7 +179,7 @@ func (b *BigIP) createVirtualServer(msg service.Message) error {
 		Name:        msg.Service.Name,
 		Destination: msg.Service.PublicIP + ":" + strconv.Itoa(b.getLBPort(msg)),
 		IPProtocol:  "tcp",
-		Pool:        msg.Service.Name,
+		Pool:        b.getNameWithPartition(msg.Service.Name),
 		Description: msg.Service.Name + " (by Interlook)",
 	}
 	vs.SourceAddressTranslation.Type = "automap"
@@ -206,7 +207,7 @@ func (b *BigIP) createVirtualServer(msg service.Message) error {
 
 func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, port string) error {
 
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+vs.Name)
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+b.getNameWithPartition(vs.Name))
 	if err != nil {
 		return err
 	}
@@ -232,7 +233,7 @@ func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, p
 
 func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 
-	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+msg.Service.Name)
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.getNameWithPartition(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -252,7 +253,7 @@ func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err error) {
 
 	var membersResponse poolMembersResponse
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+poolName)
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.getNameWithPartition(poolName))
 	if err != nil {
 		return members, port, err
 	}
@@ -319,7 +320,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 	}
 	newPoolMembers.Members = members
 
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+msg.Service.Name)
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+b.getNameWithPartition(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -341,7 +342,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 
 func (b *BigIP) deletePool(msg service.Message) error {
 
-	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+msg.Service.Name)
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.getNameWithPartition(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -360,7 +361,7 @@ func (b *BigIP) deletePool(msg service.Message) error {
 
 func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error) {
 
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+resourceName)
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+b.getNameWithPartition(resourceName))
 	if err != nil {
 		return false, err
 	}
@@ -377,18 +378,19 @@ func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error
 }
 
 func (b *BigIP) testConnection() (httpRspCode int, err error) {
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/shared/authz/tokens")
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+selfUserResource+b.User)
+	//+"/mgmt/shared/authz/tokens")
 	if err != nil {
 		return 0, err
 	}
 
-	_, httpCode, err := b.executeRequest(r.Req)
+	res, httpCode, err := b.executeRequest(r.Req)
 	if err != nil {
 		return httpCode, err
 	}
 
 	if httpCode != 200 {
-		return httpCode, errors.New("could not establish connection")
+		return httpCode, errors.New(fmt.Sprintf("Could not establish connection: HttpCode %v, message: %v", httpCode, string(res)))
 	}
 
 	return httpCode, nil
@@ -440,18 +442,17 @@ func (b *BigIP) getAuthToken() error {
 	}
 	authReq.Body = ioutil.NopCloser(bytes.NewReader(buf))
 
-	rsp, httpCode, err := b.executeRequest(authReq)
+	res, httpCode, err := b.executeRequest(authReq)
 	if err != nil {
 		return err
 	}
 
 	if httpCode != 200 {
-		return err
+		return errors.New(fmt.Sprintf("Could not authenticate: HttpCode %v, message: %v", httpCode, string(res)))
 	}
 
-	log.Info(rsp)
 	var tokenRsp tokenResponse
-	err = json.Unmarshal(rsp, &tokenRsp)
+	err = json.Unmarshal(res, &tokenRsp)
 	if err != nil {
 		return err
 	}
@@ -504,6 +505,13 @@ func (b *BigIP) newAuthRequest(method, url string) (*request, error) {
 	r.Req.Header.Set("X-F5-Auth-Token", b.AuthToken)
 
 	return r, nil
+}
+
+func (b *BigIP) getNameWithPartition(name string) (fullName string) {
+	if b.Partition != "" {
+		return "~" + b.Partition + "~" + name
+	}
+	return name
 }
 
 func (b *BigIP) getPoolFromMsg(msg service.Message) pool {
