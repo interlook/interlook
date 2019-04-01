@@ -75,14 +75,14 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 				}
 				// check if pool attached to vs needs to be changed
 				if vsExist {
-					members, port, err := b.getPoolMembers(msg.Service.Name)
+					members, hostPort, err := b.getPoolMembers(msg.Service.Name)
 					if err != nil {
 						msg.Error = err.Error()
 					}
 					// check if current pool is as defined in msg
-					if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != port {
+					if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != hostPort {
 						// hosts differ, update f5 pool
-						log.Debugf("pool %v: host/port differs", msg.Service.Name)
+						log.Debugf("pool %v: host/hostPort differs", msg.Service.Name)
 						if err := b.updatePoolMembers(msg); err != nil {
 							msg.Error = err.Error()
 						}
@@ -90,12 +90,15 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 						continue
 					}
 					// check if virtual's IP is the one we got in msg
-					log.Debugf("pool %v: exposed IP differs", msg.Service.Name)
-					if !strings.Contains(currentVirtual.Destination, msg.Service.PublicIP+":"+strconv.Itoa(msg.Service.Port)) {
+					if !strings.Contains(currentVirtual.Destination, msg.Service.PublicIP+":"+strconv.Itoa(b.getLBPort(msg))) {
+						log.Debugf("pool %v: exposed IP differs", msg.Service.Name)
+
 						if err := b.updateVirtualServerIPDestination(currentVirtual, msg.Service.PublicIP, strconv.Itoa(b.getLBPort(msg))); err != nil {
 							msg.Error = err.Error()
 						}
 					}
+
+					log.Debugf("f5ltm, nothing to do for service %v", msg.Service.Name)
 					send <- msg
 					continue
 				}
@@ -111,7 +114,9 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 				}
 
 				send <- msg
+
 			case service.DeleteAction:
+
 				msg.Action = service.UpdateAction
 				vsExist, err := b.isResourceExists(msg.Service.Name, "virtual")
 				if err != nil {
@@ -149,9 +154,9 @@ func (b *BigIP) Stop() error {
 	return nil
 }
 
-func (b *BigIP) getVirtualServerByName(poolName string) (vs virtualServerResponse, err error) {
+func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, err error) {
 
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.getNameWithPartition(poolName))
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+virtualServerResource+b.addPartitionAsName(name))
 	if err != nil {
 		return vs, err
 	}
@@ -176,10 +181,10 @@ func (b *BigIP) getVirtualServerByName(poolName string) (vs virtualServerRespons
 func (b *BigIP) createVirtualServer(msg service.Message) error {
 
 	vs := virtualServer{
-		Name:        msg.Service.Name,
-		Destination: msg.Service.PublicIP + ":" + strconv.Itoa(b.getLBPort(msg)),
+		Name:        b.addPartitionAsPath(msg.Service.Name),
+		Destination: b.addPartitionAsPath(msg.Service.PublicIP + ":" + strconv.Itoa(b.getLBPort(msg))),
 		IPProtocol:  "tcp",
-		Pool:        b.getNameWithPartition(msg.Service.Name),
+		Pool:        b.addPartitionAsPath(msg.Service.Name),
 		Description: msg.Service.Name + " (by Interlook)",
 	}
 	vs.SourceAddressTranslation.Type = "automap"
@@ -188,7 +193,7 @@ func (b *BigIP) createVirtualServer(msg service.Message) error {
 	if err != nil {
 		return err
 	}
-
+	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
 	if err := r.setJSONBody(vs); err != nil {
 		return err
 	}
@@ -207,15 +212,18 @@ func (b *BigIP) createVirtualServer(msg service.Message) error {
 
 func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, port string) error {
 
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+b.getNameWithPartition(vs.Name))
+	var destPayload destinationPayload
+
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+b.addPartitionAsName(vs.Name))
 	if err != nil {
 		return err
 	}
 
 	destinationCurrentHostPort := vs.Destination[strings.LastIndex(vs.Destination, "/")+1:]
-	destination := strings.TrimRight(vs.Destination, destinationCurrentHostPort) + ip + ":" + port
+	destPayload.Destination = strings.TrimRight(vs.Destination, destinationCurrentHostPort) + ip + ":" + port
+	destPayload.Partition = b.Partition
 
-	if err := r.setJSONBody(destination); err != nil {
+	if err := r.setJSONBody(destPayload); err != nil {
 		return err
 	}
 
@@ -233,7 +241,7 @@ func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, p
 
 func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 
-	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.getNameWithPartition(msg.Service.Name))
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.addPartitionAsPath(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -253,7 +261,7 @@ func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err error) {
 
 	var membersResponse poolMembersResponse
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.getNameWithPartition(poolName))
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.addPartitionAsName(poolName)+"/members")
 	if err != nil {
 		return members, port, err
 	}
@@ -262,6 +270,7 @@ func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err
 	if err != nil {
 		return members, port, err
 	}
+
 	if httpCode != 200 {
 		return members, port, err
 	}
@@ -291,18 +300,18 @@ func (b *BigIP) createPool(msg service.Message) error {
 	if err != nil {
 		return err
 	}
-
+	log.Debugf("url: %v", b.Endpoint+poolResource)
 	if err := r.setJSONBody(pool); err != nil {
 		return err
 	}
 
-	_, httpCode, err := b.executeRequest(r.Req)
+	res, httpCode, err := b.executeRequest(r.Req)
 	if err != nil {
 		return err
 	}
 
 	if httpCode != http.StatusOK {
-		return errors.New("non 200 return code")
+		return errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
 	}
 
 	return nil
@@ -320,7 +329,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 	}
 	newPoolMembers.Members = members
 
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+b.getNameWithPartition(msg.Service.Name))
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -328,6 +337,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 		return err
 	}
 
+	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
 	res, httpCode, err := b.executeRequest(r.Req)
 	if err != nil {
 		return err
@@ -342,7 +352,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 
 func (b *BigIP) deletePool(msg service.Message) error {
 
-	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.getNameWithPartition(msg.Service.Name))
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -361,7 +371,7 @@ func (b *BigIP) deletePool(msg service.Message) error {
 
 func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error) {
 
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+b.getNameWithPartition(resourceName))
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+b.addPartitionAsName(resourceName))
 	if err != nil {
 		return false, err
 	}
@@ -413,7 +423,7 @@ func (b *BigIP) executeRequest(r *http.Request) (responseBody []byte, httpCode i
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
 		log.Debugf(readErr.Error())
-		return body, res.StatusCode, err
+		return body, res.StatusCode, readErr
 	}
 
 	return body, res.StatusCode, nil
@@ -507,7 +517,14 @@ func (b *BigIP) newAuthRequest(method, url string) (*request, error) {
 	return r, nil
 }
 
-func (b *BigIP) getNameWithPartition(name string) (fullName string) {
+func (b *BigIP) addPartitionAsPath(name string) (fullName string) {
+	if b.Partition != "" {
+		return "/" + b.Partition + "/" + name
+	}
+	return name
+}
+
+func (b *BigIP) addPartitionAsName(name string) (fullName string) {
 	if b.Partition != "" {
 		return "~" + b.Partition + "~" + name
 	}
@@ -521,11 +538,11 @@ func (b *BigIP) getPoolFromMsg(msg service.Message) pool {
 	port := strconv.Itoa(msg.Service.Port)
 
 	for _, host := range msg.Service.Hosts {
-		hosts = append(hosts, host+":"+port)
+		hosts = append(hosts, b.addPartitionAsPath("")+host+":"+port)
 	}
 
 	pool := pool{
-		Name:        msg.Service.Name,
+		Name:        b.addPartitionAsPath(msg.Service.Name),
 		Members:     hosts,
 		Description: msg.Service.Name + " (by Interlook)",
 	}

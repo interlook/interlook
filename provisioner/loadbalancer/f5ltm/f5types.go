@@ -15,7 +15,8 @@ type pool struct {
 }
 
 type poolMembers struct {
-	Members []member `json:"members"`
+	Members   []member `json:"members"`
+	Partition string   `json:"partition,omitempty"`
 }
 
 type member struct {
@@ -137,6 +138,11 @@ type poolMembersResponse struct {
 		Session        string `json:"session"`
 		State          string `json:"state"`
 	} `json:"items"`
+}
+
+type destinationPayload struct {
+	Destination string `json:"destination"`
+	Partition   string `json:"partition,omitempty"`
 }
 
 // https://f5IP/mgmt/shared/authz/users/{user}
