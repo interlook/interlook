@@ -31,7 +31,7 @@ type ServerConfiguration struct {
 		Kubernetes *kubernetes.Extension `yaml:"kubernetes,omitempty"`
 	} `yaml:"provider"`
 	IPAM struct {
-		IPAlloc *ipalloc.Extension `yaml:"ipalloc,omitempty"`
+		IPAlloc *ipalloc.IPAlloc `yaml:"ipalloc,omitempty"`
 	} `yaml:"ipam,omitempty"`
 	DNS struct {
 		Consul *consul.Consul `yaml:"consul,omitempty"`
