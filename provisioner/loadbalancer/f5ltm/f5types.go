@@ -145,6 +145,11 @@ type destinationPayload struct {
 	Partition   string `json:"partition,omitempty"`
 }
 
+type deleteResourcePayload struct {
+	FullPath  string `json:"fullPath"`
+	Partition string `json:"partition,omitempty"`
+}
+
 // https://f5IP/mgmt/shared/authz/users/{user}
 type authSelfTestResponse struct {
 	Name             string `json:"name"`

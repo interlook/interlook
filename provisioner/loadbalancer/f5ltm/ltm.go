@@ -85,9 +85,9 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 						log.Debugf("pool %v: host/hostPort differs", msg.Service.Name)
 						if err := b.updatePoolMembers(msg); err != nil {
 							msg.Error = err.Error()
+							send <- msg
+							continue
 						}
-						send <- msg
-						continue
 					}
 					// check if virtual's IP is the one we got in msg
 					if !strings.Contains(currentVirtual.Destination, msg.Service.PublicIP+":"+strconv.Itoa(b.getLBPort(msg))) {
@@ -95,6 +95,8 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 
 						if err := b.updateVirtualServerIPDestination(currentVirtual, msg.Service.PublicIP, strconv.Itoa(b.getLBPort(msg))); err != nil {
 							msg.Error = err.Error()
+							send <- msg
+							continue
 						}
 					}
 
@@ -107,6 +109,8 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 
 				if err := b.createPool(msg); err != nil {
 					msg.Error = err.Error()
+					send <- msg
+					continue
 				}
 
 				if err := b.createVirtualServer(msg); err != nil {
@@ -121,18 +125,24 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 				vsExist, err := b.isResourceExists(msg.Service.Name, "virtual")
 				if err != nil {
 					msg.Error = err.Error()
+					send <- msg
+					continue
 				}
 
 				if vsExist {
 					log.Debugf("Found virtual %v", msg.Service.Name)
 					if err = b.deleteVirtualServer(msg); err != nil {
 						msg.Error = err.Error()
+						send <- msg
+						continue
 					}
 				}
 
 				poolExist, err := b.isResourceExists(msg.Service.Name, "pool")
 				if err != nil {
 					msg.Error = err.Error()
+					send <- msg
+					continue
 				}
 
 				if poolExist {
@@ -244,8 +254,16 @@ func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, p
 
 func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 
-	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.addPartitionAsPath(msg.Service.Name))
+	var deletePayload deleteResourcePayload
+	deletePayload.Partition = b.Partition
+	deletePayload.FullPath = b.addPartitionAsPath(msg.Service.Name)
+
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.addPartitionAsName(msg.Service.Name))
 	if err != nil {
+		return err
+	}
+
+	if err := r.setJSONBody(deletePayload); err != nil {
 		return err
 	}
 
@@ -359,8 +377,16 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 // deletePool deletes the pool from f5
 func (b *BigIP) deletePool(msg service.Message) error {
 
+	var deletePayload deleteResourcePayload
+	deletePayload.Partition = b.Partition
+	deletePayload.FullPath = b.addPartitionAsPath(msg.Service.Name)
+
 	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
 	if err != nil {
+		return err
+	}
+
+	if err := r.setJSONBody(deletePayload); err != nil {
 		return err
 	}
 
