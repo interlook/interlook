@@ -81,8 +81,8 @@ func initServer() (server, error) {
 	s.initExtensions()
 
 	// init workflowEntries table
-	s.flowEntries = initWorkflowEntries()
-	if err := s.flowEntries.loadFile(s.config.Core.FlowEntriesFile); err != nil {
+	s.flowEntries = initWorkflowEntries(s.config.Core.FlowEntriesFile)
+	if err := s.flowEntries.loadFile(); err != nil {
 		log.Errorf("Could not load entries from file: %v", err)
 	}
 
@@ -213,7 +213,7 @@ func (s *server) workflowControlRunner() {
 		select {
 		case <-s.coreShutdown:
 			log.Info("Stopping FlowControl")
-			if err := s.flowEntries.save(s.config.Core.FlowEntriesFile); err != nil {
+			if err := s.flowEntries.save(); err != nil {
 				log.Error(err.Error())
 			}
 			log.Infof("Saved flow entries to %v", s.config.Core.FlowEntriesFile)
@@ -230,7 +230,7 @@ func (s *server) workflowControlRunner() {
 // triggers required action(s) to bring service state
 // to desired state (deployed or undeployed)
 func (s *server) workflowControl() {
-	for k, v := range s.flowEntries.M {
+	for k, v := range s.flowEntries.Entries {
 		if v.State != v.ExpectedState && !v.WorkInProgress {
 			var msg service.Message
 
@@ -279,13 +279,15 @@ func (s *server) workflowControl() {
 	}
 }
 
-func (s *server) cleanUndeployed() {
+func (s *server) worflowEntriesCleanup() {
 	s.flowEntries.Lock()
 	defer s.flowEntries.Unlock()
-	for k, v := range s.flowEntries.M {
+	for k, v := range s.flowEntries.Entries {
 		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == undeployedState {
-			delete(s.flowEntries.M, k)
+			delete(s.flowEntries.Entries, k)
 		}
+		// add closing of "in progress" flows
+		// add closing of in error flows
 	}
 }
 

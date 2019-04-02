@@ -119,13 +119,14 @@ func (we *workflowEntry) isStateAsWanted(action string) bool {
 // workflowEntries holds the table of tracked services
 type workflowEntries struct {
 	sync.Mutex
-	M map[string]*workflowEntry `json:"entries,omitempty"`
+	Entries map[string]*workflowEntry `json:"entries,omitempty"`
+	DBFile  string
 }
 
-func initWorkflowEntries() *workflowEntries {
+func initWorkflowEntries(dbFile string) *workflowEntries {
 	fe := new(workflowEntries)
-	fe.M = make(map[string]*workflowEntry)
-
+	fe.Entries = make(map[string]*workflowEntry)
+	fe.DBFile = dbFile
 	return fe
 }
 
@@ -164,23 +165,29 @@ func (we *workflowEntries) messageHandler(msg service.Message) error {
 
 		if !serviceExist {
 			ne := makeNewFlowEntry()
-			we.M[msg.Service.Name] = &ne
+			we.Entries[msg.Service.Name] = &ne
 		}
 		// only provider can change desired state
 		if strings.Contains(msg.Sender, "provider.") {
-			we.M[msg.Service.Name].ExpectedState = deployedState
+			we.Entries[msg.Service.Name].ExpectedState = deployedState
 		}
 
-		we.M[msg.Service.Name].State = msg.Sender
-		we.M[msg.Service.Name].Service = msg.Service
-		we.M[msg.Service.Name].WorkInProgress = false
-		we.M[msg.Service.Name].Error = msg.Error
+		we.Entries[msg.Service.Name].State = msg.Sender
+		we.Entries[msg.Service.Name].Service = msg.Service
+		we.Entries[msg.Service.Name].WorkInProgress = false
+		we.Entries[msg.Service.Name].Error = msg.Error
+		if err := we.save(); err != nil {
+			log.Errorf("Error saving flow entries")
+		}
 
 	case service.DeleteAction:
 		we.Lock()
 		defer we.Unlock()
-		we.M[msg.Service.Name].ExpectedState = undeployedState
-		we.M[msg.Service.Name].LastUpdate = time.Now()
+		we.Entries[msg.Service.Name].ExpectedState = undeployedState
+		we.Entries[msg.Service.Name].LastUpdate = time.Now()
+		if err := we.save(); err != nil {
+			log.Errorf("Error saving flow entries")
+		}
 
 	default:
 		log.Warnf("mergeToFlow could not handle %v action\n", msg.Action)
@@ -191,7 +198,7 @@ func (we *workflowEntries) messageHandler(msg service.Message) error {
 }
 
 func (we *workflowEntries) getServiceByName(name string) (*workflowEntry, error) {
-	res, ok := we.M[name]
+	res, ok := we.Entries[name]
 	if !ok {
 		return res, errors.New(fmt.Sprintf("No entry found for %v", name))
 	}
@@ -201,29 +208,34 @@ func (we *workflowEntries) getServiceByName(name string) (*workflowEntry, error)
 
 func (we *workflowEntries) prepareForNextStep(entry, step string, reverse bool) {
 	we.Lock()
-	we.M[entry].WorkInProgress = true
-	we.M[entry].WIPTime = time.Now()
-	we.M[entry].State = step
+	we.Entries[entry].WorkInProgress = true
+	we.Entries[entry].WIPTime = time.Now()
+	we.Entries[entry].State = step
+	if err := we.save(); err != nil {
+		log.Errorf("Error saving flow entries")
+	}
 	we.Unlock()
 }
 
 func (we *workflowEntries) closeEntry(serviceName string, reverse bool) {
 	we.Lock()
-	we.M[serviceName].WorkInProgress = false
-	we.M[serviceName].WIPTime = time.Time{}
-	we.M[serviceName].CloseTime = time.Now()
+	we.Entries[serviceName].WorkInProgress = false
+	we.Entries[serviceName].WIPTime = time.Time{}
+	we.Entries[serviceName].CloseTime = time.Now()
 
 	if reverse {
-		we.M[serviceName].State = undeployedState
+		we.Entries[serviceName].State = undeployedState
 	} else {
-		we.M[serviceName].State = deployedState
+		we.Entries[serviceName].State = deployedState
 	}
-
+	if err := we.save(); err != nil {
+		log.Errorf("Error saving flow entries")
+	}
 	we.Unlock()
 }
 
-func (we *workflowEntries) save(filename string) error {
-	dbFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+func (we *workflowEntries) save() error {
+	dbFile, err := os.OpenFile(we.DBFile, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
@@ -233,7 +245,7 @@ func (we *workflowEntries) save(filename string) error {
 		}
 	}()
 
-	data, err := json.Marshal(we.M)
+	data, err := json.Marshal(we.Entries)
 	if err != nil {
 		return err
 	}
@@ -250,13 +262,13 @@ func (we *workflowEntries) save(filename string) error {
 	return nil
 }
 
-func (we *workflowEntries) loadFile(filename string) error {
-	dbFile, err := ioutil.ReadFile(filename)
+func (we *workflowEntries) loadFile() error {
+	file, err := ioutil.ReadFile(we.DBFile)
 	if err != nil {
 		return err
 	}
 
-	if err = json.Unmarshal(dbFile, &we.M); err != nil {
+	if err = json.Unmarshal(file, &we.Entries); err != nil {
 		return err
 	}
 

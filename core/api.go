@@ -36,7 +36,7 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 func (s *server) getServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(s.flowEntries.M)
+	json.NewEncoder(w).Encode(s.flowEntries.Entries)
 }
 
 func (s *server) getWorkflow(w http.ResponseWriter, r *http.Request) {
