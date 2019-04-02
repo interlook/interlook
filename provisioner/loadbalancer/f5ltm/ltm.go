@@ -154,6 +154,7 @@ func (b *BigIP) Stop() error {
 	return nil
 }
 
+// getVirtualServerByName returns the virtual server from its name
 func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, err error) {
 
 	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+virtualServerResource+b.addPartitionAsName(name))
@@ -178,6 +179,7 @@ func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, e
 	return vs, nil
 }
 
+// createVirtualServer created a virtual server from a service
 func (b *BigIP) createVirtualServer(msg service.Message) error {
 
 	vs := virtualServer{
@@ -210,6 +212,7 @@ func (b *BigIP) createVirtualServer(msg service.Message) error {
 	return nil
 }
 
+// updateVirtualServerIPDestination updates the public IP of the virtual server
 func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, port string) error {
 
 	var destPayload destinationPayload
@@ -258,6 +261,7 @@ func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 	return nil
 }
 
+// getPoolMembers returns the members of a pool
 func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err error) {
 
 	var membersResponse poolMembersResponse
@@ -292,9 +296,10 @@ func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err
 	return members, port, nil
 }
 
+// createPool creates the pool with information from the message
 func (b *BigIP) createPool(msg service.Message) error {
 
-	pool := b.getPoolFromMsg(msg)
+	pool := b.getPoolFromService(msg)
 
 	r, err := b.newAuthRequest(http.MethodPost, b.Endpoint+poolResource)
 	if err != nil {
@@ -317,6 +322,7 @@ func (b *BigIP) createPool(msg service.Message) error {
 	return nil
 }
 
+// updatePoolMembers replace the members of the pool with the ones from the message
 func (b *BigIP) updatePoolMembers(msg service.Message) error {
 
 	newPoolMembers := poolMembers{}
@@ -350,6 +356,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 	return nil
 }
 
+// deletePool deletes the pool from f5
 func (b *BigIP) deletePool(msg service.Message) error {
 
 	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
@@ -369,6 +376,7 @@ func (b *BigIP) deletePool(msg service.Message) error {
 	return nil
 }
 
+// isResourceExists checks if a given resource is already defined on f5
 func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error) {
 
 	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+b.addPartitionAsName(resourceName))
@@ -387,7 +395,9 @@ func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error
 	return true, nil
 }
 
+// testConnection tests the authz f5 endpoint
 func (b *BigIP) testConnection() (httpRspCode int, err error) {
+
 	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+selfUserResource+b.User)
 	//+"/mgmt/shared/authz/tokens")
 	if err != nil {
@@ -517,6 +527,8 @@ func (b *BigIP) newAuthRequest(method, url string) (*request, error) {
 	return r, nil
 }
 
+// addPartitionAsPath adds the name of the partition to the given name
+// ie: myPool in partition myPartition -> /myPartition/myPool
 func (b *BigIP) addPartitionAsPath(name string) (fullName string) {
 	if b.Partition != "" {
 		return "/" + b.Partition + "/" + name
@@ -524,6 +536,8 @@ func (b *BigIP) addPartitionAsPath(name string) (fullName string) {
 	return name
 }
 
+// addPartitionAsName adds the name of the partition to the given name
+// ie: myPool in partition myPartition -> ~myPartition~myPool
 func (b *BigIP) addPartitionAsName(name string) (fullName string) {
 	if b.Partition != "" {
 		return "~" + b.Partition + "~" + name
@@ -531,7 +545,8 @@ func (b *BigIP) addPartitionAsName(name string) (fullName string) {
 	return name
 }
 
-func (b *BigIP) getPoolFromMsg(msg service.Message) pool {
+// getPoolFromService returns a pool (name, hosts and port) from a Service
+func (b *BigIP) getPoolFromService(msg service.Message) pool {
 
 	var hosts []string
 
