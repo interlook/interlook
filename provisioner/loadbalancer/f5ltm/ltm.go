@@ -167,7 +167,7 @@ func (b *BigIP) Stop() error {
 // getVirtualServerByName returns the virtual server from its name
 func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, err error) {
 
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+virtualServerResource+b.addPartitionAsName(name))
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+virtualServerResource+b.addPartitionToName(name))
 	if err != nil {
 		return vs, err
 	}
@@ -193,10 +193,10 @@ func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, e
 func (b *BigIP) createVirtualServer(msg service.Message) error {
 
 	vs := virtualServer{
-		Name:        b.addPartitionAsPath(msg.Service.Name),
-		Destination: b.addPartitionAsPath(msg.Service.PublicIP + ":" + strconv.Itoa(b.getLBPort(msg))),
+		Name:        b.addPartitionToPath(msg.Service.Name),
+		Destination: b.addPartitionToPath(msg.Service.PublicIP + ":" + strconv.Itoa(b.getLBPort(msg))),
 		IPProtocol:  "tcp",
-		Pool:        b.addPartitionAsPath(msg.Service.Name),
+		Pool:        b.addPartitionToPath(msg.Service.Name),
 		Description: msg.Service.Name + " (by Interlook)",
 	}
 	vs.SourceAddressTranslation.Type = "automap"
@@ -205,7 +205,7 @@ func (b *BigIP) createVirtualServer(msg service.Message) error {
 	if err != nil {
 		return err
 	}
-	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
+	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
 	if err := r.setJSONBody(vs); err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, p
 
 	var destPayload destinationPayload
 
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+b.addPartitionAsName(vs.Name))
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+b.addPartitionToName(vs.Name))
 	if err != nil {
 		return err
 	}
@@ -256,9 +256,9 @@ func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 
 	var deletePayload deleteResourcePayload
 	deletePayload.Partition = b.Partition
-	deletePayload.FullPath = b.addPartitionAsPath(msg.Service.Name)
+	deletePayload.FullPath = b.addPartitionToPath(msg.Service.Name)
 
-	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.addPartitionAsName(msg.Service.Name))
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.addPartitionToName(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -283,7 +283,7 @@ func (b *BigIP) deleteVirtualServer(msg service.Message) error {
 func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err error) {
 
 	var membersResponse poolMembersResponse
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.addPartitionAsName(poolName)+"/members")
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.addPartitionToName(poolName)+"/members")
 	if err != nil {
 		return members, port, err
 	}
@@ -353,7 +353,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 	}
 	newPoolMembers.Members = members
 
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -361,7 +361,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 		return err
 	}
 
-	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
+	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
 	res, httpCode, err := b.executeRequest(r.Req)
 	if err != nil {
 		return err
@@ -379,9 +379,9 @@ func (b *BigIP) deletePool(msg service.Message) error {
 
 	var deletePayload deleteResourcePayload
 	deletePayload.Partition = b.Partition
-	deletePayload.FullPath = b.addPartitionAsPath(msg.Service.Name)
+	deletePayload.FullPath = b.addPartitionToPath(msg.Service.Name)
 
-	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.addPartitionAsName(msg.Service.Name))
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
 	if err != nil {
 		return err
 	}
@@ -405,7 +405,7 @@ func (b *BigIP) deletePool(msg service.Message) error {
 // isResourceExists checks if a given resource is already defined on f5
 func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error) {
 
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+b.addPartitionAsName(resourceName))
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+b.addPartitionToName(resourceName))
 	if err != nil {
 		return false, err
 	}
@@ -553,18 +553,18 @@ func (b *BigIP) newAuthRequest(method, url string) (*request, error) {
 	return r, nil
 }
 
-// addPartitionAsPath adds the name of the partition to the given name
+// addPartitionToPath adds the name of the partition to the given name
 // ie: myPool in partition myPartition -> /myPartition/myPool
-func (b *BigIP) addPartitionAsPath(name string) (fullName string) {
+func (b *BigIP) addPartitionToPath(name string) (fullName string) {
 	if b.Partition != "" {
 		return "/" + b.Partition + "/" + name
 	}
 	return name
 }
 
-// addPartitionAsName adds the name of the partition to the given name
+// addPartitionToName adds the name of the partition to the given name
 // ie: myPool in partition myPartition -> ~myPartition~myPool
-func (b *BigIP) addPartitionAsName(name string) (fullName string) {
+func (b *BigIP) addPartitionToName(name string) (fullName string) {
 	if b.Partition != "" {
 		return "~" + b.Partition + "~" + name
 	}
@@ -579,11 +579,11 @@ func (b *BigIP) getPoolFromService(msg service.Message) pool {
 	port := strconv.Itoa(msg.Service.Port)
 
 	for _, host := range msg.Service.Hosts {
-		hosts = append(hosts, b.addPartitionAsPath("")+host+":"+port)
+		hosts = append(hosts, b.addPartitionToPath("")+host+":"+port)
 	}
 
 	pool := pool{
-		Name:        b.addPartitionAsPath(msg.Service.Name),
+		Name:        b.addPartitionToPath(msg.Service.Name),
 		Members:     hosts,
 		Description: msg.Service.Name + " (by Interlook)",
 	}
