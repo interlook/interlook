@@ -239,6 +239,8 @@ func (we *workflowEntries) save() error {
 	if err != nil {
 		return err
 	}
+	dbFile.Truncate(0)
+	dbFile.Seek(0, 0)
 	defer func() {
 		if err := dbFile.Close(); err != nil {
 			log.Errorf("Error closing filename %v", err)
