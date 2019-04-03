@@ -14,5 +14,5 @@ type Extension interface {
 
 type Provider interface {
 	Extension
-	ListAll(send chan<- service.Message)
+	RefreshService(serviceName string)
 }

@@ -190,7 +190,7 @@ func (we *workflowEntries) messageHandler(msg service.Message) error {
 		}
 
 	default:
-		log.Warnf("mergeToFlow could not handle %v action\n", msg.Action)
+		log.Warnf("messageHandler could not handle %v action\n", msg.Action)
 		return errors.New("unhandled action")
 	}
 

@@ -71,7 +71,7 @@ func initServer() (server, error) {
 	s.coreShutdown = make(chan bool)
 	s.signals = make(chan os.Signal, 1)
 	s.flowChan = make(chan service.Message)
-	s.flowControlTicker = time.NewTicker(s.config.Core.CheckFlowInterval)
+	s.flowControlTicker = time.NewTicker(s.config.Core.WorkflowControlInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
 
 	// init workflow
