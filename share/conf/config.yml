@@ -4,7 +4,9 @@ core:
   listenPort: 8080
   logFile : stdout
   workflow: provider.docker,ipam.ipalloc,lb.f5ltm
-  checkFlowInterval: 5s
+  workflowControlInterval: 5s
+  cleanUndeployedServiceAfer: 10m
+  reconcileServiceWihtProviderInterval: 5m
   flowEntriesFile: ./share/flowentries.db
 
 provider:
@@ -38,6 +40,7 @@ lb:
     password: apiPassw0rd
     httpPort: 80
     httpsPort: 443
+
   f5ltm:
     httpEndpoint: https://10.32.20.100
     username: api
