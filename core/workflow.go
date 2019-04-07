@@ -6,13 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bhuisgen/interlook/log"
+	"github.com/bhuisgen/interlook/messaging"
 	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/bhuisgen/interlook/service"
 )
 
 const (
@@ -93,9 +92,9 @@ type workflowEntry struct {
 	// First time the service was pushed by the provider
 	TimeDetected time.Time `json:"time_detected,omitempty"`
 	// Last time provider pushed an updated definition of the service
-	LastUpdate time.Time       `json:"last_update,omitempty"`
-	Service    service.Service `json:"service,omitempty"`
-	CloseTime  time.Time       `json:"close_time"`
+	LastUpdate time.Time         `json:"last_update,omitempty"`
+	Service    messaging.Service `json:"service,omitempty"`
+	CloseTime  time.Time         `json:"close_time"`
 }
 
 func makeNewFlowEntry() workflowEntry {
@@ -107,8 +106,8 @@ func makeNewFlowEntry() workflowEntry {
 
 func (we *workflowEntry) isStateAsWanted(action string) bool {
 	if we.ExpectedState == we.State &&
-		((we.State == deployedState && action == service.AddAction) ||
-			(we.State == undeployedState && action == service.DeleteAction)) {
+		((we.State == deployedState && action == messaging.AddAction) ||
+			(we.State == undeployedState && action == messaging.DeleteAction)) {
 		log.Debug("service state is OK")
 		return true
 	}
@@ -131,7 +130,7 @@ func initWorkflowEntries(dbFile string) *workflowEntries {
 }
 
 // messageHandler manages messages received from extensions
-func (we *workflowEntries) messageHandler(msg service.Message) error {
+func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 	log.Debugf("messageHandler received %v\n", msg)
 	var serviceExist, serviceUnchanged, serviceStateOK bool
 
@@ -153,13 +152,13 @@ func (we *workflowEntries) messageHandler(msg service.Message) error {
 	}
 
 	// if no changes are needed on existing service, we do nothing
-	if serviceUnchanged && msg.Action == service.AddAction && serviceStateOK {
+	if serviceUnchanged && msg.Action == messaging.AddAction && serviceStateOK {
 		log.Debugf("Service %v already in desired state\n", msg.Service.Name)
 		return nil
 	}
 
 	switch msg.Action {
-	case service.AddAction, service.UpdateAction:
+	case messaging.AddAction, messaging.UpdateAction:
 		we.Lock()
 		defer we.Unlock()
 
@@ -180,7 +179,7 @@ func (we *workflowEntries) messageHandler(msg service.Message) error {
 			log.Errorf("Error saving flow entries")
 		}
 
-	case service.DeleteAction:
+	case messaging.DeleteAction:
 		we.Lock()
 		defer we.Unlock()
 		we.Entries[msg.Service.Name].ExpectedState = undeployedState

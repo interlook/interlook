@@ -3,24 +3,21 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : stdout
-  workflow: provider.docker,ipam.ipalloc,lb.f5ltm
-  workflowControlInterval: 5s
+  workflow: provider.swarm,ipam.ipalloc,lb.f5ltm
+  workflowControlInterval: 3s
   cleanUndeployedServiceAfer: 10m
   reconcileServiceWihtProviderInterval: 5m
   flowEntriesFile: ./share/flowentries.db
 
 provider:
-  docker:
-    name: myDocker
-    endpoint: tcp://docker.net:443
+  swarm:
+    endpoint: tcp://ucp.csnet.me:443
     labelSelector:
-      - interlook.host
-    tlsCa: path/to/ca
-    tlsCert: path/to/cert
-    tlsKey: path/to/key
-    Watch: true
-    WatchInterval: 10s
-    updateInterval: 15s
+      - interlook.hosts
+    tlsCa: /home/michael/dkr/bundle/admin/ca.pem
+    tlsCert: /home/michael/dkr/bundle/admin/cert.pem
+    tlsKey: /home/michael/dkr/bundle/admin/key.pem
+    pollInterval: 15s
 
 ipam:
   ipalloc:
@@ -51,6 +48,6 @@ lb:
     httpsPort: 443
     monitorName: tcp
     tcpProfile:
-    partition:
+    partition: interlook
     loadBalancingMode: least-connections-member
 

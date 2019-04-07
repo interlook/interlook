@@ -27,7 +27,7 @@ type ServerConfiguration struct {
 	} `yaml:"core"`
 	Provider struct {
 		Docker     *docker.Extension     `yaml:"docker,omitempty"`
-		Swarm      *swarm.Extension      `yaml:"swarm,omitempty"`
+		Swarm      *swarm.Provider       `yaml:"swarm,omitempty"`
 		Kubernetes *kubernetes.Extension `yaml:"kubernetes,omitempty"`
 	} `yaml:"provider"`
 	IPAM struct {

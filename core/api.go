@@ -16,7 +16,6 @@ func (s *server) startAPI() {
 	mux.HandleFunc("/services", s.getServices)
 	mux.HandleFunc("/workflow", s.getWorkflow)
 	mux.HandleFunc("/extensions", s.getActiveExtensions)
-    mux.HandleFunc("/config", s.getConfig)
 
 	log.Info(s.apiServer.ListenAndServe())
 }
@@ -50,11 +49,4 @@ func (s *server) getActiveExtensions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(s.extensionChannels)
-}
-
-func (s *server) getConfig(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
-    tmpConfig := s.config
-
-    json.NewEncoder(w).Encode(s.config)
 }

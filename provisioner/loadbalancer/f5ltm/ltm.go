@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
+	"github.com/bhuisgen/interlook/messaging"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
@@ -50,7 +50,7 @@ func (b *BigIP) initialize() {
 	b.shutdown = make(chan bool)
 }
 
-func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Message) error {
+func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
 	b.initialize()
 	if _, err := b.testConnection(); err != nil {
 		return err
@@ -65,8 +65,8 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 			log.Debugf("BigIP f5ltm received a message %v", msg)
 
 			switch msg.Action {
-			case service.AddAction, service.UpdateAction:
-				msg.Action = service.UpdateAction
+			case messaging.AddAction, messaging.UpdateAction:
+				msg.Action = messaging.UpdateAction
 				// check if virtual server already vsExist
 				vsExist := true
 				currentVirtual, err := b.getVirtualServerByName(msg.Service.Name)
@@ -119,9 +119,9 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 
 				send <- msg
 
-			case service.DeleteAction:
+			case messaging.DeleteAction:
 
-				msg.Action = service.UpdateAction
+				msg.Action = messaging.UpdateAction
 				vsExist, err := b.isResourceExists(msg.Service.Name, "virtual")
 				if err != nil {
 					msg.Error = err.Error()
@@ -190,7 +190,7 @@ func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, e
 }
 
 // createVirtualServer created a virtual server from a service
-func (b *BigIP) createVirtualServer(msg service.Message) error {
+func (b *BigIP) createVirtualServer(msg messaging.Message) error {
 
 	vs := virtualServer{
 		Name:        b.addPartitionToPath(msg.Service.Name),
@@ -252,7 +252,7 @@ func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, p
 	return nil
 }
 
-func (b *BigIP) deleteVirtualServer(msg service.Message) error {
+func (b *BigIP) deleteVirtualServer(msg messaging.Message) error {
 
 	var deletePayload deleteResourcePayload
 	deletePayload.Partition = b.Partition
@@ -315,7 +315,7 @@ func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err
 }
 
 // createPool creates the pool with information from the message
-func (b *BigIP) createPool(msg service.Message) error {
+func (b *BigIP) createPool(msg messaging.Message) error {
 
 	pool := b.getPoolFromService(msg)
 
@@ -341,7 +341,7 @@ func (b *BigIP) createPool(msg service.Message) error {
 }
 
 // updatePoolMembers replace the members of the pool with the ones from the message
-func (b *BigIP) updatePoolMembers(msg service.Message) error {
+func (b *BigIP) updatePoolMembers(msg messaging.Message) error {
 
 	newPoolMembers := poolMembers{}
 	members := make([]member, 0)
@@ -375,7 +375,7 @@ func (b *BigIP) updatePoolMembers(msg service.Message) error {
 }
 
 // deletePool deletes the pool from f5
-func (b *BigIP) deletePool(msg service.Message) error {
+func (b *BigIP) deletePool(msg messaging.Message) error {
 
 	var deletePayload deleteResourcePayload
 	deletePayload.Partition = b.Partition
@@ -465,7 +465,7 @@ func (b *BigIP) executeRequest(r *http.Request) (responseBody []byte, httpCode i
 	return body, res.StatusCode, nil
 }
 
-func (b *BigIP) getLBPort(msg service.Message) int {
+func (b *BigIP) getLBPort(msg messaging.Message) int {
 	if !msg.Service.TLS {
 		return b.HttpPort
 	}
@@ -572,7 +572,7 @@ func (b *BigIP) addPartitionToName(name string) (fullName string) {
 }
 
 // getPoolFromService returns a pool (name, hosts and port) from a Service
-func (b *BigIP) getPoolFromService(msg service.Message) pool {
+func (b *BigIP) getPoolFromService(msg messaging.Message) pool {
 
 	var hosts []string
 

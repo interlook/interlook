@@ -4,7 +4,7 @@ import (
 	"flag"
 	"github.com/bhuisgen/interlook/config"
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
+	"github.com/bhuisgen/interlook/messaging"
 	"github.com/fatih/structs"
 	"net/http"
 	"reflect"
@@ -34,7 +34,7 @@ type server struct {
 	extensionChannels map[string]*extensionChannels
 	workflow          workflow
 	flowEntries       *workflowEntries
-	flowChan          chan service.Message
+	flowChan          chan messaging.Message
 	flowControlTicker *time.Ticker
 	coreWG            sync.WaitGroup // waitgroup for core processes sync
 	extensionsWG      sync.WaitGroup // waitgroup for extensions sync
@@ -70,7 +70,7 @@ func initServer() (server, error) {
 	// init channels and maps
 	s.coreShutdown = make(chan bool)
 	s.signals = make(chan os.Signal, 1)
-	s.flowChan = make(chan service.Message)
+	s.flowChan = make(chan messaging.Message)
 	s.flowControlTicker = time.NewTicker(s.config.Core.WorkflowControlInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
 
@@ -232,7 +232,7 @@ func (s *server) workflowControlRunner() {
 func (s *server) workflowControl() {
 	for k, v := range s.flowEntries.Entries {
 		if v.State != v.ExpectedState && !v.WorkInProgress {
-			var msg service.Message
+			var msg messaging.Message
 
 			if v.Error != "" {
 				log.Warnf("Service %v is in error %v", v.Service.Name, v.Error)
@@ -261,9 +261,9 @@ func (s *server) workflowControl() {
 			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
 
 			if reverse {
-				msg.Action = service.DeleteAction
+				msg.Action = messaging.DeleteAction
 			} else {
-				msg.Action = service.AddAction
+				msg.Action = messaging.AddAction
 			}
 
 			msg.Service = v.Service
@@ -294,15 +294,15 @@ func (s *server) worflowEntriesCleanup() {
 // extensionChannels holds the "activated" extensions's channels
 type extensionChannels struct {
 	name    string
-	receive chan service.Message
-	send    chan service.Message
+	receive chan messaging.Message
+	send    chan messaging.Message
 }
 
 func newExtensionChannels(name string) *extensionChannels {
 	p := new(extensionChannels)
 	p.name = name
-	p.send = make(chan service.Message)
-	p.receive = make(chan service.Message)
+	p.send = make(chan messaging.Message)
+	p.receive = make(chan messaging.Message)
 
 	return p
 }

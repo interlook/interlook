@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
+	"github.com/bhuisgen/interlook/messaging"
 	"io/ioutil"
 	"net"
 	"strings"
@@ -53,7 +53,7 @@ func incrementIP(ip net.IP) {
 	}
 }
 
-func (i *IPAlloc) Start(receive <-chan service.Message, send chan<- service.Message) error {
+func (i *IPAlloc) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
 	// load db from ipalloc
 	if err := i.db.load(i.DbFile); err != nil {
 		log.Warnf("error loading db ipalloc %v", err.Error())
@@ -70,8 +70,8 @@ func (i *IPAlloc) Start(receive <-chan service.Message, send chan<- service.Mess
 			log.Debugf("ipam.ipalloc received message %v\n", msg)
 
 			switch msg.Action {
-			case service.DeleteAction:
-				msg.Action = service.UpdateAction
+			case messaging.DeleteAction:
+				msg.Action = messaging.UpdateAction
 				if err := i.deleteService(msg.Service.Name); err != nil {
 					log.Errorf("Error deleting service %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
@@ -87,7 +87,7 @@ func (i *IPAlloc) Start(receive <-chan service.Message, send chan<- service.Mess
 				// check if service is already defined
 				// if yes send back msg with update action
 				// if not, get new IPAM, update service def and send back msg
-				msg.Action = service.UpdateAction
+				msg.Action = messaging.UpdateAction
 
 				if i.serviceExist(&msg) {
 					log.Debugf("service %v already exist", msg.Service.Name)
@@ -186,7 +186,7 @@ func (d *db) load(file string) error {
 	return nil
 }
 
-func (i *IPAlloc) serviceExist(msg *service.Message) bool {
+func (i *IPAlloc) serviceExist(msg *messaging.Message) bool {
 	for _, v := range i.db.Records {
 		if v.Host == msg.Service.Name {
 			return true
