@@ -3,6 +3,7 @@ package swarm
 import (
 	"github.com/bhuisgen/interlook/messaging"
 	"github.com/docker/docker/api/types/swarm"
+	"github.com/docker/go-connections/nat"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,6 +50,7 @@ func (p *Provider) initDockerCli() error {
 
 	p.cli, err = client.NewClientWithOpts(client.WithTLSClientConfig(p.TLSCa, p.TLSCert, p.TLSKey),
 		client.WithHost(p.Endpoint),
+		// TODO: check hoe to handle api version
 		client.WithVersion("1.29"),
 		client.WithHTTPHeaders(map[string]string{"User-Agent": "interlook"}))
 
@@ -111,9 +113,8 @@ func (p *Provider) Stop() error {
 }
 
 // poll get the services to be deployed
-// builds the interlook service definition
-// list docker services with filters
-// for each, get the containers
+// list docker services with filters (interlook.hosts and interlook.port labels)
+// for each, inspect the container(s) to get IPs and ports
 // finally send the info to the core
 func (p *Provider) poll() {
 
@@ -126,11 +127,6 @@ func (p *Provider) poll() {
 	}
 
 	for _, service := range data {
-
-		if service.Endpoint.Spec.Mode != swarm.ResolutionModeVIP {
-			log.Warnf("unsupported endpoint mode for service %v", service.Spec.Name)
-			return
-		}
 
 		msg, err := p.buildMessageFromService(service)
 		log.Debugf("swarm message %v", msg)
@@ -223,11 +219,10 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (messaging.Mes
 
 	tlsService, _ := strconv.ParseBool(service.Spec.Labels[sslLabel])
 
-	port, err := strconv.Atoi(service.Spec.Labels[portLabel])
+	targetPort, err := nat.NewPort("tcp", service.Spec.Labels[portLabel])
 	if err != nil {
 		log.Error(err)
 	}
-	svcTargetPort := uint32(port)
 
 	msg := messaging.Message{
 		Service: messaging.Service{
@@ -237,48 +232,30 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (messaging.Mes
 			TLS:        tlsService,
 		}}
 
-	for _, svcPort := range service.Endpoint.Ports {
+	// TODO: check if restrict to swarm.PortConfigPublishModeHost, swarm.PortConfigPublishModeIngress ?
 
-		if svcPort.TargetPort == svcTargetPort && svcPort.PublishedPort != 0 {
-			msg.Service.Port = int(svcPort.PublishedPort)
-
-			if svcPort.PublishMode == swarm.PortConfigPublishModeHost {
-				log.Debugf("############ %v", svcPort)
-				containers, err := p.getContainersByService(service.Spec.Name)
+	containers, err := p.getContainersByService(service.Spec.Name)
+	if err != nil {
+		return msg, err
+	}
+	for _, container := range containers {
+		containerDetails, err := p.cli.ContainerInspect(ctx, container.ID)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		portSettings := containerDetails.NetworkSettings.Ports
+		for _, val := range portSettings[targetPort] {
+			if val.HostIP != "" {
+				msg.Service.Hosts = append(msg.Service.Hosts, val.HostIP)
+				msg.Service.Port, err = strconv.Atoi(val.HostPort)
 				if err != nil {
-					return msg, err
-				}
-				for _, container := range containers {
-					for _, portSpec := range container.Ports {
-						if portSpec.PrivatePort == uint16(svcTargetPort) &&
-							portSpec.IP != "" &&
-							portSpec.Type == "tcp" &&
-							portSpec.PublicPort == uint16(svcPort.PublishedPort) {
-							log.Debugf("####### SWARM ######## adding %v for %v", portSpec.IP, service.Spec.Name)
-							msg.Service.Hosts = append(msg.Service.Hosts, portSpec.IP)
-						}
-					}
-				}
-			}
-
-			if svcPort.PublishMode == swarm.PortConfigPublishModeIngress {
-				log.Debugf("############ %v", svcPort)
-				containers, err := p.getContainersByService(service.Spec.Name)
-				if err != nil {
-					return msg, err
-				}
-				for _, container := range containers {
-					containerDetails, err := p.cli.ContainerInspect(ctx, container.ID)
-					if err != nil {
-						log.Error(err)
-						continue
-					}
-					log.Debugf("####### SWARM ######## adding %v for %v", "containerDetails", service.Spec.Name)
-					msg.Service.Hosts = append(msg.Service.Hosts, containerDetails.Node.IPAddress)
+					log.Error(err)
 				}
 			}
 		}
 	}
+
 	return msg, nil
 }
 
