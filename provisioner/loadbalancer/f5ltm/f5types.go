@@ -151,25 +151,25 @@ type deleteResourcePayload struct {
 }
 
 // https://f5IP/mgmt/shared/authz/users/{user}
-type authSelfTestResponse struct {
-	Name             string `json:"name"`
-	DisplayName      string `json:"displayName"`
-	Shell            string `json:"shell"`
-	Generation       int    `json:"generation"`
-	LastUpdateMicros int    `json:"lastUpdateMicros"`
-	Kind             string `json:"kind"`
-	SelfLink         string `json:"selfLink"`
-}
-
-type transaction struct {
-	TransID          int64  `json:"transId"`
-	State            string `json:"state"`
-	TimeoutSeconds   int    `json:"timeoutSeconds"`
-	AsyncExecution   bool   `json:"asyncExecution"`
-	ValidateOnly     bool   `json:"validateOnly"`
-	ExecutionTimeout int    `json:"executionTimeout"`
-	ExecutionTime    int    `json:"executionTime"`
-	FailureReason    string `json:"failureReason"`
-	Kind             string `json:"kind"`
-	SelfLink         string `json:"selfLink"`
-}
+//type authSelfTestResponse struct {
+//	Name             string `json:"name"`
+//	DisplayName      string `json:"displayName"`
+//	Shell            string `json:"shell"`
+//	Generation       int    `json:"generation"`
+//	LastUpdateMicros int    `json:"lastUpdateMicros"`
+//	Kind             string `json:"kind"`
+//	SelfLink         string `json:"selfLink"`
+//}
+//
+//type transaction struct {
+//	TransID          int64  `json:"transId"`
+//	State            string `json:"state"`
+//	TimeoutSeconds   int    `json:"timeoutSeconds"`
+//	AsyncExecution   bool   `json:"asyncExecution"`
+//	ValidateOnly     bool   `json:"validateOnly"`
+//	ExecutionTimeout int    `json:"executionTimeout"`
+//	ExecutionTime    int    `json:"executionTime"`
+//	FailureReason    string `json:"failureReason"`
+//	Kind             string `json:"kind"`
+//	SelfLink         string `json:"selfLink"`
+//}

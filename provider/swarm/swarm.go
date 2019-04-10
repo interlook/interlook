@@ -97,6 +97,7 @@ func (p *Provider) Start(receive <-chan messaging.Message, send chan<- messaging
 			switch msg.Action {
 			case messaging.RefreshAction:
 				log.Debugf("Request to refresh service %v", msg.Service.Name)
+				p.RefreshService(msg)
 			default:
 				log.Debugf("Unhandled action requested: %v", msg.Action)
 			}
@@ -132,21 +133,22 @@ func (p *Provider) poll() {
 		log.Debugf("swarm message %v", msg)
 		if err != nil {
 			log.Debugf("Error building message for service %v %v", service.Spec.Name, err.Error())
-			return
+			continue
 		}
 
 		if len(msg.Service.Hosts) == 0 {
 			log.Debugf("No host found for service %v", service.Spec.Name)
-			return
+			delMsg := p.buildDeleteMessage(service.Spec.Name)
+			p.send <- delMsg
+			continue
 		}
 
-		msg.Action = messaging.AddAction
 		log.Debugf("%v sent msg %v", extensionName, msg)
 		p.send <- msg
 	}
 }
 
-func (p *Provider) refreshService(msg messaging.Message) {
+func (p *Provider) RefreshService(msg messaging.Message) {
 
 	service := p.getServiceByName(msg.Service.Name)
 
@@ -156,6 +158,7 @@ func (p *Provider) refreshService(msg messaging.Message) {
 	}
 
 	if newMsg.Service.Name == "" || len(newMsg.Service.Hosts) == 0 {
+		log.Debugf("Swarm service %v not found, will send delete", msg.Service.Name)
 		newMsg = p.buildDeleteMessage(msg.Service.Name)
 	}
 
@@ -192,7 +195,9 @@ func (p *Provider) getServiceByName(svcName string) swarm.Service {
 		log.Errorf("Error getting service %v : %v", svcName, err)
 		return swarm.Service{}
 	}
-
+	if len(services) == 0 {
+		return swarm.Service{}
+	}
 	return services[0]
 }
 
@@ -225,6 +230,7 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (messaging.Mes
 	}
 
 	msg := messaging.Message{
+		Action: messaging.AddAction,
 		Service: messaging.Service{
 			Name:       service.Spec.Name,
 			Provider:   extensionName,

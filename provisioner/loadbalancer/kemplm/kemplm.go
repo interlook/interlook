@@ -313,7 +313,7 @@ func (k *KempLM) executeRequest(r *http.Request) (body []byte, statusCode int, e
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
-		log.Debugf(err.Error())
+		log.Debugf(readErr.Error())
 		return body, res.StatusCode, err
 	}
 

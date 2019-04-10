@@ -2,10 +2,12 @@ package core
 
 import (
 	"flag"
+	"fmt"
 	"github.com/bhuisgen/interlook/config"
 	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/messaging"
 	"github.com/fatih/structs"
+	"github.com/pkg/errors"
 	"net/http"
 	"reflect"
 	"strings"
@@ -19,7 +21,7 @@ import (
 var (
 	//	srv        server
 	configFile string
-	Version    string
+	//Version    string
 )
 
 // TODO: add deletion of closed, undeployed workflowEntries (runner + time param?)
@@ -27,18 +29,19 @@ var (
 // holds Interlook server config
 // Keeps a list of configured and started extensions
 type server struct {
-	config            *config.ServerConfiguration
-	signals           chan os.Signal
-	coreShutdown      chan bool
-	extensions        map[string]Extension
-	extensionChannels map[string]*extensionChannels
-	workflow          workflow
-	flowEntries       *workflowEntries
-	flowChan          chan messaging.Message
-	flowControlTicker *time.Ticker
-	coreWG            sync.WaitGroup // waitgroup for core processes sync
-	extensionsWG      sync.WaitGroup // waitgroup for extensions sync
-	apiServer         *http.Server
+	config                      *config.ServerConfiguration
+	signals                     chan os.Signal
+	workflowControllerShutdown  chan bool
+	workflowHouseKeeperShutdown chan bool
+	extensions                  map[string]Extension
+	extensionChannels           map[string]*extensionChannels
+	workflow                    workflow
+	workflowEntries             *workflowEntries
+	workflowControlTicker       *time.Ticker
+	workflowHousekeeperTicker   *time.Ticker
+	coreWG                      sync.WaitGroup // waitgroup for core processes sync
+	extensionsWG                sync.WaitGroup // waitgroup for extensions sync
+	apiServer                   *http.Server
 }
 
 // Start initialize server and run it
@@ -68,10 +71,11 @@ func initServer() (server, error) {
 	log.Debug("logger ok")
 
 	// init channels and maps
-	s.coreShutdown = make(chan bool)
 	s.signals = make(chan os.Signal, 1)
-	s.flowChan = make(chan messaging.Message)
-	s.flowControlTicker = time.NewTicker(s.config.Core.WorkflowControlInterval)
+	s.workflowControllerShutdown = make(chan bool)
+	s.workflowHouseKeeperShutdown = make(chan bool)
+	s.workflowControlTicker = time.NewTicker(s.config.Core.WorkflowControlInterval)
+	s.workflowHousekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeepingInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
 
 	// init workflow
@@ -81,8 +85,8 @@ func initServer() (server, error) {
 	s.initExtensions()
 
 	// init workflowEntries table
-	s.flowEntries = initWorkflowEntries(s.config.Core.FlowEntriesFile)
-	if err := s.flowEntries.loadFile(); err != nil {
+	s.workflowEntries = initWorkflowEntries(s.config.Core.WorkflowEntriesFile)
+	if err := s.workflowEntries.loadFile(); err != nil {
 		log.Errorf("Could not load entries from file: %v", err)
 	}
 
@@ -94,7 +98,7 @@ func (s *server) initWorkflow() workflow {
 	var wf workflow
 	wf = make(map[int]string)
 
-	for k, v := range strings.Split(s.config.Core.Workflow, ",") {
+	for k, v := range strings.Split(s.config.Core.WorkflowSteps, ",") {
 		wf[k+1] = v
 	}
 
@@ -140,6 +144,10 @@ func (s *server) run() {
 	s.coreWG.Add(1)
 	go s.workflowControlRunner()
 
+	// run workflowHouseKeeper
+	s.coreWG.Add(1)
+	go s.workflowHousekeeper()
+
 	// start all configured extensions
 	// for each one, starts a dedicated listener goroutine
 	for name, extension := range s.extensions {
@@ -180,7 +188,8 @@ func (s *server) run() {
 			}
 			s.extensionsWG.Wait()
 			s.stopAPI()
-			s.coreShutdown <- true
+			s.workflowHouseKeeperShutdown <- true
+			s.workflowControllerShutdown <- true
 		}
 	}()
 
@@ -201,7 +210,7 @@ func (s *server) extensionListener(extension *extensionChannels) {
 		log.Debugf("Received message from %v, sending to flow control\n", extension.name)
 
 		// inject message to workflow
-		if err := s.flowEntries.messageHandler(newMessage); err != nil {
+		if err := s.workflowEntries.messageHandler(newMessage); err != nil {
 			log.Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
 		}
 	}
@@ -211,15 +220,15 @@ func (s *server) extensionListener(extension *extensionChannels) {
 func (s *server) workflowControlRunner() {
 	for {
 		select {
-		case <-s.coreShutdown:
+		case <-s.workflowControllerShutdown:
 			log.Info("Stopping FlowControl")
-			if err := s.flowEntries.save(); err != nil {
+			if err := s.workflowEntries.save(); err != nil {
 				log.Error(err.Error())
 			}
-			log.Infof("Saved flow entries to %v", s.config.Core.FlowEntriesFile)
+			log.Infof("Saved flow entries to %v", s.config.Core.WorkflowEntriesFile)
 			s.coreWG.Done()
 			return
-		case <-s.flowControlTicker.C:
+		case <-s.workflowControlTicker.C:
 			log.Debug("Running workflowControl")
 			s.workflowControl()
 		}
@@ -230,11 +239,11 @@ func (s *server) workflowControlRunner() {
 // triggers required action(s) to bring service state
 // to desired state (deployed or undeployed)
 func (s *server) workflowControl() {
-	for k, v := range s.flowEntries.Entries {
+	for k, v := range s.workflowEntries.Entries {
 		if v.State != v.ExpectedState && !v.WorkInProgress {
 			var msg messaging.Message
 
-			if v.Error != "" {
+			if v.Error != "" && v.CloseTime.IsZero() {
 				log.Warnf("Service %v is in error %v", v.Service.Name, v.Error)
 				continue
 			}
@@ -254,11 +263,11 @@ func (s *server) workflowControl() {
 
 			if s.workflow.isLastStep(nextStep, reverse) {
 				log.Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
-				s.flowEntries.closeEntry(k, reverse)
+				s.workflowEntries.closeEntry(k, reverse)
 				continue
 			}
 
-			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
+			s.workflowEntries.prepareForNextStep(k, nextStep, reverse)
 
 			if reverse {
 				msg.Action = messaging.DeleteAction
@@ -279,16 +288,68 @@ func (s *server) workflowControl() {
 	}
 }
 
-func (s *server) worflowEntriesCleanup() {
-	s.flowEntries.Lock()
-	defer s.flowEntries.Unlock()
-	for k, v := range s.flowEntries.Entries {
-		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == undeployedState {
-			delete(s.flowEntries.Entries, k)
+func (s *server) workflowHousekeeper() {
+	for {
+		select {
+		case <-s.workflowHouseKeeperShutdown:
+			log.Info("Stopping workflowHousekeeper")
+			s.coreWG.Done()
+			return
+
+		case <-s.workflowHousekeeperTicker.C:
+			log.Info("Running workflowHousekeeper")
+			s.workflowEntries.Lock()
+			for k, v := range s.workflowEntries.Entries {
+				if v.State == v.ExpectedState && !v.WorkInProgress {
+					// remove old closed entry
+					if v.State == undeployedState && time.Now().Sub(v.CloseTime) > s.config.Core.CleanUndeployedServiceAfter {
+						delete(s.workflowEntries.Entries, k)
+					}
+					// ask refresh to provider
+					if time.Now().Sub(v.LastUpdate) > s.config.Core.ServiceMaxLastUpdated {
+						err := s.refreshService(v.Service.Name)
+						if err != nil {
+							log.Errorf("Error sending service refresh to provider %v", err)
+						}
+					}
+				}
+
+				// closing of WIP timed out
+				if v.WorkInProgress && time.Now().Sub(v.WIPTime) > s.config.Core.ServiceWIPTimeout {
+					errorMsg := fmt.Sprintf("Closed due to ServiceWIPTimeout reached at step %v. Err: %v", v.State, v.Error)
+					v.CloseTime = time.Now()
+					v.WorkInProgress = false
+					v.WIPTime = time.Time{}
+					v.Error = errorMsg
+					v.State = v.ExpectedState
+
+					log.Warn(errorMsg)
+				}
+				// add closing of in error flows
+			}
 		}
-		// add closing of "in progress" flows
-		// add closing of in error flows
+		s.workflowEntries.Unlock()
 	}
+}
+
+func (s *server) refreshService(serviceName string) error {
+	log.Debugf("Sending refresh request for %v", serviceName)
+	for name, extension := range s.extensions {
+
+		_, ok := extension.(Provider)
+		if ok {
+			msg := messaging.Message{
+				Action: messaging.RefreshAction,
+				Service: messaging.Service{
+					Name: serviceName,
+				},
+			}
+			log.Debugf("Sending refresh request to %v", name)
+			s.extensionChannels[name].receive <- msg
+			return nil
+		}
+	}
+	return errors.New("Could not send refresh message to provider")
 }
 
 // extensionChannels holds the "activated" extensions's channels

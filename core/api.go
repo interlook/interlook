@@ -30,13 +30,15 @@ func (s *server) stopAPI() {
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
 	// TODO: improve: add check extensions up,...
+	w.Header().Set("Content-Type", "application/json")
+
 	w.WriteHeader(200)
 }
 
 func (s *server) getServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(s.flowEntries.Entries)
+	json.NewEncoder(w).Encode(s.workflowEntries.Entries)
 }
 
 func (s *server) getWorkflow(w http.ResponseWriter, r *http.Request) {

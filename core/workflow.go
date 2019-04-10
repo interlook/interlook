@@ -151,9 +151,13 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 		serviceStateOK = curSvc.isStateAsWanted(msg.Action)
 	}
 
-	// if no changes are needed on existing service, we do nothing
+	// if no changes are needed on existing service, we do nothing but update LastUpdate
 	if serviceUnchanged && msg.Action == messaging.AddAction && serviceStateOK {
 		log.Debugf("Service %v already in desired state\n", msg.Service.Name)
+		we.Lock()
+		we.Entries[curSvc.Service.Name].LastUpdate = time.Now()
+		we.Unlock()
+
 		return nil
 	}
 
@@ -169,12 +173,18 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 		// only provider can change desired state
 		if strings.Contains(msg.Sender, "provider.") {
 			we.Entries[msg.Service.Name].ExpectedState = deployedState
+			if serviceExist && we.Entries[msg.Service.Name].CloseTime.IsZero() && we.Entries[msg.Service.Name].Error == "" {
+				log.Infof("%v action from %v ignored as service %v is still under deployment")
+				return nil
+			}
 		}
 
 		we.Entries[msg.Service.Name].State = msg.Sender
 		we.Entries[msg.Service.Name].Service = msg.Service
 		we.Entries[msg.Service.Name].WorkInProgress = false
 		we.Entries[msg.Service.Name].Error = msg.Error
+		we.Entries[msg.Service.Name].CloseTime = time.Time{}
+
 		if err := we.save(); err != nil {
 			log.Errorf("Error saving flow entries")
 		}
@@ -182,6 +192,11 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 	case messaging.DeleteAction:
 		we.Lock()
 		defer we.Unlock()
+		_, ok := we.Entries[msg.Service.Name]
+		if !ok {
+			log.Debugf("No entry found for service %v", msg.Service.Name)
+			return nil
+		}
 		we.Entries[msg.Service.Name].ExpectedState = undeployedState
 		we.Entries[msg.Service.Name].LastUpdate = time.Now()
 		if err := we.save(); err != nil {
@@ -207,6 +222,7 @@ func (we *workflowEntries) getServiceByName(name string) (*workflowEntry, error)
 
 func (we *workflowEntries) prepareForNextStep(entry, step string, reverse bool) {
 	we.Lock()
+	we.Entries[entry].CloseTime = time.Time{}
 	we.Entries[entry].WorkInProgress = true
 	we.Entries[entry].WIPTime = time.Now()
 	we.Entries[entry].State = step
@@ -227,19 +243,24 @@ func (we *workflowEntries) closeEntry(serviceName string, reverse bool) {
 	} else {
 		we.Entries[serviceName].State = deployedState
 	}
+
 	if err := we.save(); err != nil {
 		log.Errorf("Error saving flow entries")
 	}
+
 	we.Unlock()
 }
 
 func (we *workflowEntries) save() error {
+
 	dbFile, err := os.OpenFile(we.DBFile, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
+
 	dbFile.Truncate(0)
 	dbFile.Seek(0, 0)
+
 	defer func() {
 		if err := dbFile.Close(); err != nil {
 			log.Errorf("Error closing filename %v", err)
@@ -257,7 +278,7 @@ func (we *workflowEntries) save() error {
 	}
 
 	if err := dbFile.Sync(); err != nil {
-		log.Errorf("Error synching dbfile %v", err)
+		log.Errorf("Error syncing db file %v", err)
 	}
 
 	return nil

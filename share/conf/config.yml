@@ -3,11 +3,14 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : stdout
-  workflow: provider.swarm,ipam.ipalloc,lb.f5ltm
+  workflowSteps: provider.swarm,ipam.ipalloc,lb.f5ltm
+  workflowEntriesFile: ./share/flowentries.db
   workflowControlInterval: 3s
-  cleanUndeployedServiceAfer: 10m
-  reconcileServiceWihtProviderInterval: 5m
-  flowEntriesFile: ./share/flowentries.db
+  workflowHousekeepingInterval: 60s
+  serviceWIPTimeout: 90s
+  cleanUndeployedServiceAfter: 10m
+  serviceMaxLastUpdated: 90s
+
 
 provider:
   swarm:

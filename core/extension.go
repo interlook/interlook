@@ -12,5 +12,5 @@ type Extension interface {
 
 type Provider interface {
 	Extension
-	RefreshService(serviceName string)
+	RefreshService(msg messaging.Message)
 }
