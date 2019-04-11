@@ -47,6 +47,14 @@ func (b *BigIP) initialize() {
 		b.HttpsPort = 443
 	}
 
+	if b.LoadBalancingMode == "" {
+		b.LoadBalancingMode = "least-connections-member"
+	}
+
+	if b.AuthProvider == "" && b.User != "" {
+		b.AuthProvider = "tmos"
+	}
+
 	b.shutdown = make(chan bool)
 }
 

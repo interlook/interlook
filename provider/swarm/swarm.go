@@ -25,7 +25,6 @@ const (
 
 // Provider holds the provider configuration
 type Provider struct {
-	Name             string        `yaml:"name"`
 	Endpoint         string        `yaml:"endpoint"`
 	LabelSelector    []string      `yaml:"labelSelector"`
 	TLSCa            string        `yaml:"tlsCa"`
@@ -43,14 +42,20 @@ type Provider struct {
 	waitGroup        sync.WaitGroup
 }
 
-//type services map[string][]string
-func (p *Provider) initDockerCli() error {
+func (p *Provider) init() error {
 
 	var err error
 
+	p.shutdown = make(chan bool)
+	p.pollTicker = time.NewTicker(p.PollInterval)
+
+	if p.PollInterval == time.Duration(0) {
+		p.PollInterval = 15 * time.Second
+	}
+
 	p.cli, err = client.NewClientWithOpts(client.WithTLSClientConfig(p.TLSCa, p.TLSCert, p.TLSKey),
 		client.WithHost(p.Endpoint),
-		// TODO: check hoe to handle api version
+		// TODO: check how to handle docker engine api version
 		client.WithVersion("1.29"),
 		client.WithHTTPHeaders(map[string]string{"User-Agent": "interlook"}))
 
@@ -72,11 +77,9 @@ func (p *Provider) initDockerCli() error {
 
 func (p *Provider) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
 
-	p.shutdown = make(chan bool)
-	p.pollTicker = time.NewTicker(p.PollInterval)
 	p.send = send
 
-	if err := p.initDockerCli(); err != nil {
+	if err := p.init(); err != nil {
 		return err
 	}
 
