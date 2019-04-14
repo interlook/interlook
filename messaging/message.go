@@ -1,28 +1,9 @@
-/*
- * Copyright (c) 2019 The Interlook authors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON INFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
-
 package messaging
 
-import "reflect"
+import (
+	"reflect"
+	"strings"
+)
 
 const (
 	//define message actions
@@ -42,7 +23,22 @@ type Message struct {
 	Service Service
 }
 
-// Service holds the containerized service
+// BuildMessage returns a message built on service information
+func BuildMessage(service Service, reverse bool) Message {
+	var msg Message
+
+	if reverse {
+		msg.Action = DeleteAction
+	} else {
+		msg.Action = AddAction
+	}
+
+	msg.Service = service
+
+	return msg
+}
+
+// Service holds the service definition
 type Service struct {
 	Provider   string   `json:"provider,omitempty"`
 	Name       string   `json:"name,omitempty"`
@@ -77,4 +73,21 @@ func (s *Service) IsSameThan(targetService Service) (bool, []string) {
 		return false, diff
 	}
 	return true, nil
+}
+
+// updateFromMsg update service with info coming from provider or ipam extensions only
+func (s *Service) UpdateFromMsg(msg Message) {
+	if strings.HasPrefix(msg.Sender, "provider.") {
+		s.Port = msg.Service.Port
+		s.Hosts = msg.Service.Hosts
+		s.TLS = msg.Service.TLS
+		s.DNSAliases = msg.Service.DNSAliases
+	}
+
+	if strings.HasPrefix(msg.Sender, "ipam.") {
+		s.PublicIP = msg.Service.PublicIP
+	}
+
+	s.Name = msg.Service.Name
+
 }

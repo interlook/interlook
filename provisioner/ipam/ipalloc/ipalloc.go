@@ -19,6 +19,7 @@ type IPAlloc struct {
 	shutdown    chan bool
 	db          db
 	config      *config
+	wg          sync.WaitGroup
 }
 
 type config struct {
@@ -63,18 +64,21 @@ func (i *IPAlloc) Start(receive <-chan messaging.Message, send chan<- messaging.
 	for {
 		select {
 		case <-i.shutdown:
+			i.wg.Wait()
 			log.Debug("IPAlloc ipam.ipalloc shut down")
+
 			return nil
 
 		case msg := <-receive:
 			log.Debugf("ipam.ipalloc received message %v\n", msg)
-
+			i.wg.Add(1)
 			switch msg.Action {
 			case messaging.DeleteAction:
 				msg.Action = messaging.UpdateAction
 				if err := i.deleteService(msg.Service.Name); err != nil {
 					log.Errorf("Error deleting service %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
+					i.wg.Done()
 					send <- msg
 					continue
 				}
@@ -82,6 +86,7 @@ func (i *IPAlloc) Start(receive <-chan messaging.Message, send chan<- messaging.
 					log.Errorf("Error saving flowEntries %v", err)
 				}
 				msg.Service.PublicIP = ""
+				i.wg.Done()
 				send <- msg
 			default:
 				// check if service is already defined
@@ -96,6 +101,7 @@ func (i *IPAlloc) Start(receive <-chan messaging.Message, send chan<- messaging.
 					msg.Service.PublicIP = record.IP
 
 					send <- msg
+					i.wg.Done()
 					continue
 				}
 				log.Debugf("service %v does not exist, adding", msg.Service.Name)
@@ -103,10 +109,12 @@ func (i *IPAlloc) Start(receive <-chan messaging.Message, send chan<- messaging.
 				if err != nil {
 					msg.Error = err.Error()
 					send <- msg
+					i.wg.Done()
 					continue
 				}
 				msg.Service.PublicIP = ip
 				send <- msg
+				i.wg.Done()
 			}
 		}
 	}
@@ -114,7 +122,7 @@ func (i *IPAlloc) Start(receive <-chan messaging.Message, send chan<- messaging.
 
 func (i *IPAlloc) Stop() error {
 	i.shutdown <- true
-	log.Info("extension ipam.ipalloc down")
+
 	return nil
 }
 

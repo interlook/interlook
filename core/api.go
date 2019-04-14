@@ -16,16 +16,17 @@ func (s *server) startAPI() {
 	mux.HandleFunc("/services", s.getServices)
 	mux.HandleFunc("/workflow", s.getWorkflow)
 	mux.HandleFunc("/extensions", s.getActiveExtensions)
-
+	mux.HandleFunc("/version", s.getVersion)
+	log.Infof("API server started on port %v", s.config.Core.ListenPort)
 	log.Info(s.apiServer.ListenAndServe())
 }
 
 func (s *server) stopAPI() {
 	defer s.coreWG.Done()
+
 	if err := s.apiServer.Shutdown(context.Background()); err != nil {
 		log.Errorf("Error shutting down api server: %v", err)
 	}
-
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
@@ -38,17 +39,35 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 func (s *server) getServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(s.workflowEntries.Entries)
+	err := json.NewEncoder(w).Encode(s.workflowEntries.Entries)
+	if err != nil {
+		log.Errorf("Error encoding JSON response %v", err)
+	}
 }
 
 func (s *server) getWorkflow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(s.workflow)
+	err := json.NewEncoder(w).Encode(s.workflow)
+	if err != nil {
+		log.Errorf("Error encoding JSON response %v", err)
+	}
 }
 
 func (s *server) getActiveExtensions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(s.extensionChannels)
+	err := json.NewEncoder(w).Encode(s.extensionChannels)
+	if err != nil {
+		log.Errorf("Error encoding JSON response %v", err)
+	}
+}
+
+func (s *server) getVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	err := json.NewEncoder(w).Encode(Version)
+	if err != nil {
+		log.Errorf("Error encoding JSON response %v", err)
+	}
 }

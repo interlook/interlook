@@ -34,7 +34,7 @@ func (p *Extension) Start(receive <-chan messaging.Message, send chan<- messagin
 	p.close = make(chan bool)
 	p.receive = receive
 	p.send = send
-	log.Printf("Starting %v on %v\n", p.Name, p.Endpoint)
+	log.Infof("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg messaging.Message
 	msg.Action = "add" // add, remove, update, check
 	msg.Service.Provider = "docker"

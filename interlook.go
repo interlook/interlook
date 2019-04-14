@@ -5,6 +5,5 @@ import (
 )
 
 func main() {
-	//log.Println("[INFO]", "Starting interlook")
 	core.Start()
 }

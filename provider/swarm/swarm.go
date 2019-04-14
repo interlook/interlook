@@ -1,5 +1,6 @@
 package swarm
 
+// TODO: which auth to engine should we support. Currently tls implemented
 import (
 	"github.com/bhuisgen/interlook/messaging"
 	"github.com/docker/docker/api/types/swarm"
@@ -55,7 +56,7 @@ func (p *Provider) init() error {
 
 	p.cli, err = client.NewClientWithOpts(client.WithTLSClientConfig(p.TLSCa, p.TLSCert, p.TLSKey),
 		client.WithHost(p.Endpoint),
-		// TODO: check how to handle docker engine api version
+		// TODO: check which min docker engine api version we should support
 		client.WithVersion("1.29"),
 		client.WithHTTPHeaders(map[string]string{"User-Agent": "interlook"}))
 
@@ -102,14 +103,14 @@ func (p *Provider) Start(receive <-chan messaging.Message, send chan<- messaging
 				log.Debugf("Request to refresh service %v", msg.Service.Name)
 				p.RefreshService(msg)
 			default:
-				log.Debugf("Unhandled action requested: %v", msg.Action)
+				log.Warnf("Unhandled action requested: %v", msg.Action)
 			}
 		}
 	}
 }
 
 func (p *Provider) Stop() error {
-	log.Info("Stopping Swarm provider")
+	log.Debug("Stopping Swarm provider")
 	p.shutdown <- true
 	p.waitGroup.Wait()
 
@@ -140,9 +141,9 @@ func (p *Provider) poll() {
 		}
 
 		if len(msg.Service.Hosts) == 0 {
-			log.Debugf("No host found for service %v", service.Spec.Name)
-			delMsg := p.buildDeleteMessage(service.Spec.Name)
-			p.send <- delMsg
+			log.Warnf("No host found for service %v", service.Spec.Name)
+			//delMsg := p.buildDeleteMessage(service.Spec.Name)
+			//p.send <- delMsg
 			continue
 		}
 
@@ -247,12 +248,14 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (messaging.Mes
 	if err != nil {
 		return msg, err
 	}
+
 	for _, container := range containers {
 		containerDetails, err := p.cli.ContainerInspect(ctx, container.ID)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
+
 		portSettings := containerDetails.NetworkSettings.Ports
 		for _, val := range portSettings[targetPort] {
 			if val.HostIP != "" {

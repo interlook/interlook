@@ -21,7 +21,7 @@ type Extension struct {
 }
 
 func (p *Extension) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
-	log.Printf("Starting %v on %v\n", p.Name, p.Endpoint)
+	log.Infof("Starting %v on %v\n", p.Name, p.Endpoint)
 	var msg messaging.Message
 	msg.Action = "add"
 	msg.Service.Provider = "kubernetes"
@@ -34,6 +34,6 @@ func (p *Extension) Start(receive <-chan messaging.Message, send chan<- messagin
 }
 
 func (p *Extension) Stop() error {
-	log.Printf("Stopping %v\n", p.Name)
+	log.Infof("Stopping %v\n", p.Name)
 	return nil
 }

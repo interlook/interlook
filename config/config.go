@@ -1,8 +1,8 @@
 package config
 
-// TODO: add core parameter checks and default values
 import (
 	"fmt"
+	"github.com/bhuisgen/interlook/log"
 	"github.com/bhuisgen/interlook/provisioner/dns/consul"
 	"github.com/bhuisgen/interlook/provisioner/loadbalancer/f5ltm"
 	"github.com/bhuisgen/interlook/provisioner/loadbalancer/kemplm"
@@ -16,6 +16,10 @@ import (
 	"github.com/bhuisgen/interlook/provider/swarm"
 	"github.com/bhuisgen/interlook/provisioner/ipam/ipalloc"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	refConfigFile = "./docs/interlook.yml"
 )
 
 // ServerConfiguration holds the configuration
@@ -52,7 +56,7 @@ type ServerConfiguration struct {
 
 // ReadConfig parse the configuration
 func ReadConfig(filename string) (*ServerConfiguration, error) {
-	//genReferenceConfigYAMLFile()
+	genReferenceConfigYAMLFile()
 	var cfg ServerConfiguration
 	file, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -76,13 +80,18 @@ func genReferenceConfigYAMLFile() {
 	cfg.LB.KempLM = &kemplm.KempLM{}
 	cfg.LB.F5LTM = &f5ltm.BigIP{}
 
-	refFile, err := os.OpenFile("./interlook-ref-config.yml", os.O_RDWR|os.O_CREATE, 0644)
+	refFile, err := os.OpenFile(refConfigFile, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		fmt.Printf("Error opening file ./interlook-ref-config.yml %v", err)
+		fmt.Printf("Error opening file %v %v", refConfigFile, err)
 	}
 
-	refFile.Truncate(0)
-	refFile.Seek(0, 0)
+	if err := refFile.Truncate(0); err != nil {
+		log.Error(err)
+	}
+	_, err = refFile.Seek(0, 0)
+	if err != nil {
+		log.Error(err)
+	}
 
 	defer func() {
 		if err := refFile.Close(); err != nil {

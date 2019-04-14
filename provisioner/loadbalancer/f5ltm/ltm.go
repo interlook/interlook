@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -36,6 +37,8 @@ type BigIP struct {
 	Partition         string `yaml:"partition"`
 	httpClient        *http.Client
 	shutdown          chan bool
+	send              chan<- messaging.Message
+	wg                sync.WaitGroup
 }
 
 func (b *BigIP) initialize() {
@@ -58,18 +61,25 @@ func (b *BigIP) initialize() {
 	b.shutdown = make(chan bool)
 }
 
+//Start initialize extension and starts listening for messages from core
 func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
 	b.initialize()
+	b.send = send
+
 	if _, err := b.testConnection(); err != nil {
 		return err
 	}
+
 	for {
 		select {
 		case <-b.shutdown:
-			log.Info("BigIP f5ltm down")
+			// wait for messages to be processed
+			b.wg.Wait()
+
 			return nil
 
 		case msg := <-receive:
+			b.wg.Add(1)
 			log.Debugf("BigIP f5ltm received a message %v", msg)
 
 			switch msg.Action {
@@ -93,7 +103,8 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 						log.Debugf("pool %v: host/hostPort differs", msg.Service.Name)
 						if err := b.updatePoolMembers(msg); err != nil {
 							msg.Error = err.Error()
-							send <- msg
+							b.send <- msg
+							b.wg.Done()
 							continue
 						}
 					}
@@ -103,13 +114,15 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 
 						if err := b.updateVirtualServerIPDestination(currentVirtual, msg.Service.PublicIP, strconv.Itoa(b.getLBPort(msg))); err != nil {
 							msg.Error = err.Error()
-							send <- msg
+							b.send <- msg
+							b.wg.Done()
 							continue
 						}
 					}
 
 					log.Debugf("f5ltm, nothing to do for service %v", msg.Service.Name)
-					send <- msg
+					b.send <- msg
+					b.wg.Done()
 					continue
 				}
 
@@ -117,7 +130,8 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 
 				if err := b.createPool(msg); err != nil {
 					msg.Error = err.Error()
-					send <- msg
+					b.send <- msg
+					b.wg.Done()
 					continue
 				}
 
@@ -125,7 +139,8 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 					msg.Error = err.Error()
 				}
 
-				send <- msg
+				b.send <- msg
+				b.wg.Done()
 
 			case messaging.DeleteAction:
 
@@ -133,7 +148,8 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 				vsExist, err := b.isResourceExists(msg.Service.Name, "virtual")
 				if err != nil {
 					msg.Error = err.Error()
-					send <- msg
+					b.send <- msg
+					b.wg.Done()
 					continue
 				}
 
@@ -141,7 +157,8 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 					log.Debugf("Found virtual %v", msg.Service.Name)
 					if err = b.deleteVirtualServer(msg); err != nil {
 						msg.Error = err.Error()
-						send <- msg
+						b.send <- msg
+						b.wg.Done()
 						continue
 					}
 				}
@@ -149,7 +166,8 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 				poolExist, err := b.isResourceExists(msg.Service.Name, "pool")
 				if err != nil {
 					msg.Error = err.Error()
-					send <- msg
+					b.send <- msg
+					b.wg.Done()
 					continue
 				}
 
@@ -160,12 +178,14 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 					}
 				}
 
-				send <- msg
+				b.send <- msg
+				b.wg.Done()
 			}
 		}
 	}
 }
 
+// Stop stops the extension
 func (b *BigIP) Stop() error {
 	b.shutdown <- true
 

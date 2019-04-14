@@ -1,16 +1,15 @@
 ---
 core:
-  logLevel: DEBUG
+    logLevel: INFO
   listenPort: 8080
   logFile : stdout
-  workflowSteps: provider.swarm,ipam.ipalloc,lb.f5ltm
+    workflowSteps: provider.swarm,ipam.ipalloc,dns.consul,lb.f5ltm
   workflowEntriesFile: ./share/flowentries.db
   workflowControlInterval: 3s
   workflowHousekeepingInterval: 60s
   serviceWIPTimeout: 90s
   cleanUndeployedServiceAfter: 10m
   serviceMaxLastUpdated: 90s
-
 
 provider:
   swarm:
@@ -20,7 +19,7 @@ provider:
     tlsCa: /home/michael/dkr/bundle/admin/ca.pem
     tlsCert: /home/michael/dkr/bundle/admin/cert.pem
     tlsKey: /home/michael/dkr/bundle/admin/key.pem
-    pollInterval: 15s
+    pollInterval: 5s
 
 ipam:
   ipalloc:

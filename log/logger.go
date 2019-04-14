@@ -61,17 +61,6 @@ func Debugf(format string, args ...interface{}) {
 	}).Debugf(format, args...)
 }
 
-// Printf logs a message at level Info on the standard logger.
-func Printf(format string, args ...interface{}) {
-	moreInfo := retrieveCallInfo()
-	log.WithFields(log.Fields{
-		"filename": moreInfo.fileName,
-		"package":  moreInfo.packageName,
-		"function": moreInfo.funcName,
-		"line":     moreInfo.line,
-	}).Infof(format, args...)
-}
-
 // Info logs a message at level Info on the standard logger.
 func Info(args ...interface{}) {
 	moreInfo := retrieveCallInfo()
