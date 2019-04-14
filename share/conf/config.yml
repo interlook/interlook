@@ -5,8 +5,8 @@ core:
   logFile : stdout
     workflowSteps: provider.swarm,ipam.ipalloc,dns.consul,lb.f5ltm
   workflowEntriesFile: ./share/flowentries.db
-  workflowControlInterval: 3s
-  workflowHousekeepingInterval: 60s
+    workflowActivityLauncherInterval: 3s
+    workflowHousekeeperInterval: 60s
   serviceWIPTimeout: 90s
   cleanUndeployedServiceAfter: 10m
   serviceMaxLastUpdated: 90s
@@ -15,7 +15,7 @@ provider:
   swarm:
     endpoint: tcp://ucp.csnet.me:443
     labelSelector:
-      - interlook.hosts
+        - l7aas
     tlsCa: /home/michael/dkr/bundle/admin/ca.pem
     tlsCert: /home/michael/dkr/bundle/admin/cert.pem
     tlsKey: /home/michael/dkr/bundle/admin/key.pem

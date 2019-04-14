@@ -90,8 +90,8 @@ func initServer() (server, error) {
 	s.signals = make(chan os.Signal, 1)
 	s.workflowActivityLauncherShutdown = make(chan bool)
 	s.workflowHouseKeeperShutdown = make(chan bool)
-	s.workflowActivityLauncherTicker = time.NewTicker(s.config.Core.WorkflowControlInterval)
-	s.workflowHousekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeepingInterval)
+	s.workflowActivityLauncherTicker = time.NewTicker(s.config.Core.WorkflowActivityLauncherInterval)
+	s.workflowHousekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeeperInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
 
 	// init workflow
