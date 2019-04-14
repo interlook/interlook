@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
+	"github.com/bhuisgen/interlook/messaging"
 	"io/ioutil"
 	"net"
 	"strings"
 	"sync"
 )
 
-type Extension struct {
+type IPAlloc struct {
 	IPStart     string `yaml:"ip_start"`
 	IPEnd       string `yaml:"ip_end"`
 	NetworkCidr string `yaml:"network_cidr"`
@@ -19,6 +19,7 @@ type Extension struct {
 	shutdown    chan bool
 	db          db
 	config      *config
+	wg          sync.WaitGroup
 }
 
 type config struct {
@@ -53,75 +54,82 @@ func incrementIP(ip net.IP) {
 	}
 }
 
-func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
+func (i *IPAlloc) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
 	// load db from ipalloc
-	if err := p.db.load(p.DbFile); err != nil {
+	if err := i.db.load(i.DbFile); err != nil {
 		log.Warnf("error loading db ipalloc %v", err.Error())
 	}
-	p.shutdown = make(chan bool)
+	i.shutdown = make(chan bool)
 
 	for {
 		select {
-		case <-p.shutdown:
-			log.Debug("Extension ipam.ipalloc shut down")
+		case <-i.shutdown:
+			i.wg.Wait()
+			log.Debug("IPAlloc ipam.ipalloc shut down")
+
 			return nil
 
 		case msg := <-receive:
 			log.Debugf("ipam.ipalloc received message %v\n", msg)
-
+			i.wg.Add(1)
 			switch msg.Action {
-			case service.DeleteAction:
-				msg.Action = service.UpdateAction
-				if err := p.deleteService(msg.Service.Name); err != nil {
+			case messaging.DeleteAction:
+				msg.Action = messaging.UpdateAction
+				if err := i.deleteService(msg.Service.Name); err != nil {
 					log.Errorf("Error deleting service %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
+					i.wg.Done()
 					send <- msg
 					continue
 				}
-				if err := p.db.save(p.DbFile); err != nil {
+				if err := i.db.save(i.DbFile); err != nil {
 					log.Errorf("Error saving flowEntries %v", err)
 				}
 				msg.Service.PublicIP = ""
+				i.wg.Done()
 				send <- msg
 			default:
 				// check if service is already defined
 				// if yes send back msg with update action
 				// if not, get new IPAM, update service def and send back msg
-				msg.Action = service.UpdateAction
+				msg.Action = messaging.UpdateAction
 
-				if p.serviceExist(&msg) {
+				if i.serviceExist(&msg) {
 					log.Debugf("service %v already exist", msg.Service.Name)
-					record := p.db.getServiceByName(msg.Service.Name)
+					record := i.db.getServiceByName(msg.Service.Name)
 					msg.Service.Name = record.Host
 					msg.Service.PublicIP = record.IP
 
 					send <- msg
+					i.wg.Done()
 					continue
 				}
 				log.Debugf("service %v does not exist, adding", msg.Service.Name)
-				ip, err := p.addService(msg.Service.Name)
+				ip, err := i.addService(msg.Service.Name)
 				if err != nil {
 					msg.Error = err.Error()
 					send <- msg
+					i.wg.Done()
 					continue
 				}
 				msg.Service.PublicIP = ip
 				send <- msg
+				i.wg.Done()
 			}
 		}
 	}
 }
 
-func (p *Extension) Stop() error {
-	p.shutdown <- true
-	log.Info("extension ipam.ipalloc down")
+func (i *IPAlloc) Stop() error {
+	i.shutdown <- true
+
 	return nil
 }
 
-func (p *Extension) deleteService(name string) error {
-	for i, v := range p.db.Records {
+func (i *IPAlloc) deleteService(name string) error {
+	for k, v := range i.db.Records {
 		if v.Host == name {
-			p.db.Records = append(p.db.Records[:i], p.db.Records[i+1:]...)
+			i.db.Records = append(i.db.Records[:k], i.db.Records[k+1:]...)
 			return nil
 		}
 	}
@@ -137,9 +145,9 @@ func (d db) getServiceByName(name string) (svc IPAMRecord) {
 	return svc
 }
 
-func (p *Extension) addService(name string) (newIP string, err error) {
-	log.Debugf("cidr: %v", p.NetworkCidr)
-	ip, ipnet, err := net.ParseCIDR(p.NetworkCidr)
+func (i *IPAlloc) addService(name string) (newIP string, err error) {
+	log.Debugf("cidr: %v", i.NetworkCidr)
+	ip, ipnet, err := net.ParseCIDR(i.NetworkCidr)
 	if err != nil {
 		return "", err
 	}
@@ -148,10 +156,10 @@ func (p *Extension) addService(name string) (newIP string, err error) {
 		if ip.IsMulticast() || strings.Contains(ipnet.String(), ip.String()) {
 			continue
 		}
-		if p.db.isIPFree(ip) {
+		if i.db.isIPFree(ip) {
 			newRec := IPAMRecord{ip.String(), name}
-			p.db.Records = append(p.db.Records, newRec)
-			if err := p.db.save(p.DbFile); err != nil {
+			i.db.Records = append(i.db.Records, newRec)
+			if err := i.db.save(i.DbFile); err != nil {
 				log.Errorf("Error saving db to %v\n", err)
 			}
 			return ip.String(), nil
@@ -186,8 +194,8 @@ func (d *db) load(file string) error {
 	return nil
 }
 
-func (p *Extension) serviceExist(msg *service.Message) bool {
-	for _, v := range p.db.Records {
+func (i *IPAlloc) serviceExist(msg *messaging.Message) bool {
+	for _, v := range i.db.Records {
 		if v.Host == msg.Service.Name {
 			return true
 		}

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
+	"github.com/bhuisgen/interlook/messaging"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -34,7 +34,7 @@ func (k *KempLM) initialize() {
 
 }
 
-func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Message) error {
+func (k *KempLM) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
 	k.initialize()
 
 	if err := k.testConnection(); err != nil {
@@ -50,28 +50,33 @@ func (k *KempLM) Start(receive <-chan service.Message, send chan<- service.Messa
 		case msg := <-receive:
 			log.Debugf("Extension kemplm received a message")
 			switch msg.Action {
-			case service.AddAction:
-				msg.Action = service.UpdateAction
+			case messaging.AddAction:
+				msg.Action = messaging.UpdateAction
 
 				if err := k.addVS(msg); err != nil {
 					log.Debugf("error %v in addVS", err.Error())
 					msg.Error = err.Error()
+					send <- msg
+					continue
 				}
 
 				if err := k.addRS(msg); err != nil {
 					log.Debugf("error %v in addRS", err.Error())
 					msg.Error = err.Error()
+					send <- msg
+					continue
+
 				}
 				send <- msg
 
-			case service.UpdateAction:
+			case messaging.UpdateAction:
 				// check if rs and or vs needs to be updated
 				// delete vs
 				// create vs and rs
 				send <- msg
 
-			case service.DeleteAction:
-				msg.Action = service.UpdateAction
+			case messaging.DeleteAction:
+				msg.Action = messaging.UpdateAction
 
 				exist, err := k.isVSDefined(msg)
 				if err != nil {
@@ -113,7 +118,7 @@ func (k *KempLM) testConnection() error {
 	return nil
 }
 
-func (k *KempLM) deleteVS(msg service.Message) error {
+func (k *KempLM) deleteVS(msg messaging.Message) error {
 	req, err := k.newVSRequest("/access/delvs", msg)
 	if err != nil {
 		return err
@@ -131,7 +136,7 @@ func (k *KempLM) deleteVS(msg service.Message) error {
 	return nil
 }
 
-func (k *KempLM) isRSDefined(msg service.Message, host string) (bool, error) {
+func (k *KempLM) isRSDefined(msg messaging.Message, host string) (bool, error) {
 	req, err := k.newVSRequest("/access/showrs", msg)
 	if err != nil {
 		return false, err
@@ -153,7 +158,7 @@ func (k *KempLM) isRSDefined(msg service.Message, host string) (bool, error) {
 	return false, nil
 }
 
-func (k *KempLM) isVSDefined(msg service.Message) (bool, error) {
+func (k *KempLM) isVSDefined(msg messaging.Message) (bool, error) {
 	req, err := k.newVSRequest("/access/showvs", msg)
 	if err != nil {
 		return false, err
@@ -176,7 +181,7 @@ func (k *KempLM) isVSDefined(msg service.Message) (bool, error) {
 	}
 }
 
-func (k *KempLM) addVS(msg service.Message) error {
+func (k *KempLM) addVS(msg messaging.Message) error {
 
 	exist, err := k.isVSDefined(msg)
 	if err != nil {
@@ -205,7 +210,7 @@ func (k *KempLM) addVS(msg service.Message) error {
 	return nil
 }
 
-func (k *KempLM) addRS(msg service.Message) error {
+func (k *KempLM) addRS(msg messaging.Message) error {
 	for _, host := range msg.Service.Hosts {
 		rsExists, _ := k.isRSDefined(msg, host)
 
@@ -269,7 +274,7 @@ func (k *KempLM) newAuthRequest(method, url string) (*http.Request, error) {
 	return req, nil
 }
 
-func (k *KempLM) newVSRequest(path string, msg service.Message) (*http.Request, error) {
+func (k *KempLM) newVSRequest(path string, msg messaging.Message) (*http.Request, error) {
 	req, err := k.newAuthRequest(http.MethodGet, k.Endpoint+path)
 	if err != nil {
 		return req, err
@@ -290,7 +295,7 @@ func (k *KempLM) newVSRequest(path string, msg service.Message) (*http.Request, 
 	return req, nil
 }
 
-// Executes the raw request, does not parse Vault response
+// Executes the raw request, returns raw response body
 func (k *KempLM) executeRequest(r *http.Request) (body []byte, statusCode int, err error) {
 	//var err error
 	//log.Debugf("exec url: %v", r.URL.String())
@@ -308,7 +313,7 @@ func (k *KempLM) executeRequest(r *http.Request) (body []byte, statusCode int, e
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
-		log.Debugf(err.Error())
+		log.Debugf(readErr.Error())
 		return body, res.StatusCode, err
 	}
 

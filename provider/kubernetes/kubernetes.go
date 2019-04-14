@@ -1,10 +1,10 @@
 package kubernetes
 
 import (
+	"github.com/bhuisgen/interlook/messaging"
 	"time"
 
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
 )
 
 // Extension holds the provider ipalloc configuration
@@ -20,9 +20,9 @@ type Extension struct {
 	UpdateInterval string   `yaml:"updateInterval"`
 }
 
-func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Message) error {
-	log.Printf("Starting %v on %v\n", p.Name, p.Endpoint)
-	var msg service.Message
+func (p *Extension) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
+	log.Infof("Starting %v on %v\n", p.Name, p.Endpoint)
+	var msg messaging.Message
 	msg.Action = "add"
 	msg.Service.Provider = "kubernetes"
 	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
@@ -34,6 +34,6 @@ func (p *Extension) Start(receive <-chan service.Message, send chan<- service.Me
 }
 
 func (p *Extension) Stop() error {
-	log.Printf("Stopping %v\n", p.Name)
+	log.Infof("Stopping %v\n", p.Name)
 	return nil
 }

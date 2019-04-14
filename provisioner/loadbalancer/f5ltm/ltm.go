@@ -4,34 +4,41 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
+	"github.com/bhuisgen/interlook/messaging"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
 	virtualServerResource = "/mgmt/tm/ltm/virtual/"
 	poolResource          = "/mgmt/tm/ltm/pool/"
 	loginResource         = "/mgmt/shared/authn/login"
+	selfUserResource      = "/mgmt/shared/authz/users/"
 )
 
 type BigIP struct {
-	Endpoint     string `yaml:"httpEndpoint"`
-	User         string `yaml:"username"`
-	Password     string `yaml:"password"`
-	AuthProvider string `yaml:"authProvider"`
-	AuthToken    string `yaml:"authToken"`
-	HttpPort     int    `yaml:"httpPort"`
-	HttpsPort    int    `yaml:"httpsPort"`
-	MonitorName  string `yaml:"monitorName"`
-	TCPProfile   string `yaml:"tcpProfile"`
-	httpClient   *http.Client
-	shutdown     chan bool
+	Endpoint          string `yaml:"httpEndpoint"`
+	User              string `yaml:"username"`
+	Password          string `yaml:"password"`
+	AuthProvider      string `yaml:"authProvider"`
+	AuthToken         string `yaml:"authToken"`
+	HttpPort          int    `yaml:"httpPort"`
+	HttpsPort         int    `yaml:"httpsPort"`
+	MonitorName       string `yaml:"monitorName"`
+	TCPProfile        string `yaml:"tcpProfile"`
+	LoadBalancingMode string `yaml:"loadBalancingMode"`
+	Partition         string `yaml:"partition"`
+	httpClient        *http.Client
+	shutdown          chan bool
+	send              chan<- messaging.Message
+	wg                sync.WaitGroup
 }
 
 func (b *BigIP) initialize() {
@@ -43,26 +50,41 @@ func (b *BigIP) initialize() {
 		b.HttpsPort = 443
 	}
 
+	if b.LoadBalancingMode == "" {
+		b.LoadBalancingMode = "least-connections-member"
+	}
+
+	if b.AuthProvider == "" && b.User != "" {
+		b.AuthProvider = "tmos"
+	}
+
 	b.shutdown = make(chan bool)
 }
 
-func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Message) error {
+//Start initialize extension and starts listening for messages from core
+func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
 	b.initialize()
+	b.send = send
+
 	if _, err := b.testConnection(); err != nil {
 		return err
 	}
+
 	for {
 		select {
 		case <-b.shutdown:
-			log.Info("BigIP f5ltm down")
+			// wait for messages to be processed
+			b.wg.Wait()
+
 			return nil
 
 		case msg := <-receive:
+			b.wg.Add(1)
 			log.Debugf("BigIP f5ltm received a message %v", msg)
 
 			switch msg.Action {
-			case service.AddAction, service.UpdateAction:
-				msg.Action = service.UpdateAction
+			case messaging.AddAction, messaging.UpdateAction:
+				msg.Action = messaging.UpdateAction
 				// check if virtual server already vsExist
 				vsExist := true
 				currentVirtual, err := b.getVirtualServerByName(msg.Service.Name)
@@ -71,54 +93,407 @@ func (b *BigIP) Start(receive <-chan service.Message, send chan<- service.Messag
 				}
 				// check if pool attached to vs needs to be changed
 				if vsExist {
-					members, port, err := b.getPoolMembers(msg.Service.Name)
+					members, hostPort, err := b.getPoolMembers(msg.Service.Name)
 					if err != nil {
 						msg.Error = err.Error()
 					}
 					// check if current pool is as defined in msg
-					if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != port {
-						// hosts differ, patch f5 pool
-						if err := b.patchPoolMembers(msg); err != nil {
+					if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != hostPort {
+						// hosts differ, update f5 pool
+						log.Debugf("pool %v: host/hostPort differs", msg.Service.Name)
+						if err := b.updatePoolMembers(msg); err != nil {
 							msg.Error = err.Error()
+							b.send <- msg
+							b.wg.Done()
+							continue
 						}
-						log.Debugf("pool %v: port differs", msg.Service.Name)
-						send <- msg
-						continue
 					}
 					// check if virtual's IP is the one we got in msg
-					if !strings.Contains(currentVirtual.Destination, msg.Service.PublicIP+":"+strconv.Itoa(msg.Service.Port)) {
-						if err := b.patchPoolDestination(currentVirtual, msg.Service.PublicIP, strconv.Itoa(b.getLBPort(msg))); err != nil {
+					if !strings.Contains(currentVirtual.Destination, msg.Service.PublicIP+":"+strconv.Itoa(b.getLBPort(msg))) {
+						log.Debugf("pool %v: exposed IP differs", msg.Service.Name)
+
+						if err := b.updateVirtualServerIPDestination(currentVirtual, msg.Service.PublicIP, strconv.Itoa(b.getLBPort(msg))); err != nil {
 							msg.Error = err.Error()
+							b.send <- msg
+							b.wg.Done()
+							continue
 						}
 					}
-					send <- msg
-					continue
 
+					log.Debugf("f5ltm, nothing to do for service %v", msg.Service.Name)
+					b.send <- msg
+					b.wg.Done()
+					continue
 				}
 
-				log.Debugf("%v not found, creating pool and virtual", msg.Service.Name)
+				log.Debugf("%v not found, creating pool and virtual server", msg.Service.Name)
 
 				if err := b.createPool(msg); err != nil {
 					msg.Error = err.Error()
+					b.send <- msg
+					b.wg.Done()
+					continue
 				}
 
-				send <- msg
-			case service.DeleteAction:
+				if err := b.createVirtualServer(msg); err != nil {
+					msg.Error = err.Error()
+				}
 
-				send <- msg
+				b.send <- msg
+				b.wg.Done()
 
+			case messaging.DeleteAction:
+
+				msg.Action = messaging.UpdateAction
+				vsExist, err := b.isResourceExists(msg.Service.Name, "virtual")
+				if err != nil {
+					msg.Error = err.Error()
+					b.send <- msg
+					b.wg.Done()
+					continue
+				}
+
+				if vsExist {
+					log.Debugf("Found virtual %v", msg.Service.Name)
+					if err = b.deleteVirtualServer(msg); err != nil {
+						msg.Error = err.Error()
+						b.send <- msg
+						b.wg.Done()
+						continue
+					}
+				}
+
+				poolExist, err := b.isResourceExists(msg.Service.Name, "pool")
+				if err != nil {
+					msg.Error = err.Error()
+					b.send <- msg
+					b.wg.Done()
+					continue
+				}
+
+				if poolExist {
+					log.Debugf("Found pool %v", msg.Service.Name)
+					if err = b.deletePool(msg); err != nil {
+						msg.Error = err.Error()
+					}
+				}
+
+				b.send <- msg
+				b.wg.Done()
 			}
 		}
 	}
 }
 
+// Stop stops the extension
 func (b *BigIP) Stop() error {
 	b.shutdown <- true
 
 	return nil
 }
 
-func (b *BigIP) getLBPort(msg service.Message) int {
+// getVirtualServerByName returns the virtual server from its name
+func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, err error) {
+
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+virtualServerResource+b.addPartitionToName(name))
+	if err != nil {
+		return vs, err
+	}
+
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return vs, err
+	}
+
+	err = json.Unmarshal(res, &vs)
+	if err != nil {
+		return vs, err
+	}
+
+	if httpCode != 200 {
+		return vs, errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return vs, nil
+}
+
+// createVirtualServer created a virtual server from a service
+func (b *BigIP) createVirtualServer(msg messaging.Message) error {
+
+	vs := virtualServer{
+		Name:        b.addPartitionToPath(msg.Service.Name),
+		Destination: b.addPartitionToPath(msg.Service.PublicIP + ":" + strconv.Itoa(b.getLBPort(msg))),
+		IPProtocol:  "tcp",
+		Pool:        b.addPartitionToPath(msg.Service.Name),
+		Description: msg.Service.Name + " (by Interlook)",
+	}
+	vs.SourceAddressTranslation.Type = "automap"
+
+	r, err := b.newAuthRequest(http.MethodPost, b.Endpoint+virtualServerResource)
+	if err != nil {
+		return err
+	}
+	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
+	if err := r.setJSONBody(vs); err != nil {
+		return err
+	}
+
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return err
+	}
+
+	if httpCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return nil
+}
+
+// updateVirtualServerIPDestination updates the public IP of the virtual server
+func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, port string) error {
+
+	var destPayload destinationPayload
+
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+b.addPartitionToName(vs.Name))
+	if err != nil {
+		return err
+	}
+
+	destinationCurrentHostPort := vs.Destination[strings.LastIndex(vs.Destination, "/")+1:]
+	destPayload.Destination = strings.TrimRight(vs.Destination, destinationCurrentHostPort) + ip + ":" + port
+	destPayload.Partition = b.Partition
+
+	if err := r.setJSONBody(destPayload); err != nil {
+		return err
+	}
+
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return err
+	}
+
+	if httpCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return nil
+}
+
+func (b *BigIP) deleteVirtualServer(msg messaging.Message) error {
+
+	var deletePayload deleteResourcePayload
+	deletePayload.Partition = b.Partition
+	deletePayload.FullPath = b.addPartitionToPath(msg.Service.Name)
+
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+virtualServerResource+b.addPartitionToName(msg.Service.Name))
+	if err != nil {
+		return err
+	}
+
+	if err := r.setJSONBody(deletePayload); err != nil {
+		return err
+	}
+
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return err
+	}
+
+	if httpCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return nil
+}
+
+// getPoolMembers returns the members of a pool
+func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err error) {
+
+	var membersResponse poolMembersResponse
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+b.addPartitionToName(poolName)+"/members")
+	if err != nil {
+		return members, port, err
+	}
+
+	response, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return members, port, err
+	}
+
+	if httpCode != 200 {
+		return members, port, err
+	}
+
+	err = json.Unmarshal(response, &membersResponse)
+	if err != nil {
+		return members, port, err
+	}
+
+	for _, member := range membersResponse.Items {
+		i := strings.LastIndex(member.FullPath, ":")
+		port, err = strconv.Atoi(member.FullPath[i+1:])
+		if err != nil {
+			return members, port, err
+		}
+		members = append(members, member.Address)
+	}
+
+	return members, port, nil
+}
+
+// createPool creates the pool with information from the message
+func (b *BigIP) createPool(msg messaging.Message) error {
+
+	pool := b.getPoolFromService(msg)
+
+	r, err := b.newAuthRequest(http.MethodPost, b.Endpoint+poolResource)
+	if err != nil {
+		return err
+	}
+	log.Debugf("url: %v", b.Endpoint+poolResource)
+	if err := r.setJSONBody(pool); err != nil {
+		return err
+	}
+
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return err
+	}
+
+	if httpCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return nil
+}
+
+// updatePoolMembers replace the members of the pool with the ones from the message
+func (b *BigIP) updatePoolMembers(msg messaging.Message) error {
+
+	newPoolMembers := poolMembers{}
+	members := make([]member, 0)
+
+	for _, host := range msg.Service.Hosts {
+		members = append(members, member{
+			Name:    host + ":" + strconv.Itoa(msg.Service.Port),
+			Address: host})
+	}
+	newPoolMembers.Members = members
+
+	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
+	if err != nil {
+		return err
+	}
+	if err := r.setJSONBody(newPoolMembers); err != nil {
+		return err
+	}
+
+	log.Debugf("url: %v", b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return err
+	}
+
+	if httpCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return nil
+}
+
+// deletePool deletes the pool from f5
+func (b *BigIP) deletePool(msg messaging.Message) error {
+
+	var deletePayload deleteResourcePayload
+	deletePayload.Partition = b.Partition
+	deletePayload.FullPath = b.addPartitionToPath(msg.Service.Name)
+
+	r, err := b.newAuthRequest(http.MethodDelete, b.Endpoint+poolResource+b.addPartitionToName(msg.Service.Name))
+	if err != nil {
+		return err
+	}
+
+	if err := r.setJSONBody(deletePayload); err != nil {
+		return err
+	}
+
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return err
+	}
+
+	if httpCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return nil
+}
+
+// isResourceExists checks if a given resource is already defined on f5
+func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error) {
+
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+b.addPartitionToName(resourceName))
+	if err != nil {
+		return false, err
+	}
+
+	_, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return false, err
+	}
+	if httpCode != 200 {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// testConnection tests the authz f5 endpoint
+func (b *BigIP) testConnection() (httpRspCode int, err error) {
+
+	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+selfUserResource+b.User)
+	//+"/mgmt/shared/authz/tokens")
+	if err != nil {
+		return 0, err
+	}
+
+	res, httpCode, err := b.executeRequest(r.Req)
+	if err != nil {
+		return httpCode, err
+	}
+
+	if httpCode != 200 {
+		return httpCode, errors.New(fmt.Sprintf("Could not establish connection: HttpCode %v, message: %v", httpCode, string(res)))
+	}
+
+	return httpCode, nil
+}
+
+// Executes the raw request, does not parse response
+func (b *BigIP) executeRequest(r *http.Request) (responseBody []byte, httpCode int, err error) {
+
+	res, err := b.httpClient.Do(r)
+	if err != nil {
+		log.Error(err.Error())
+		return nil, 0, err
+	}
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			log.Errorf("Error closing body", err)
+		}
+	}()
+
+	body, readErr := ioutil.ReadAll(res.Body)
+	if readErr != nil {
+		log.Debugf(readErr.Error())
+		return body, res.StatusCode, readErr
+	}
+
+	return body, res.StatusCode, nil
+}
+
+func (b *BigIP) getLBPort(msg messaging.Message) int {
 	if !msg.Service.TLS {
 		return b.HttpPort
 	}
@@ -141,18 +516,17 @@ func (b *BigIP) getAuthToken() error {
 	}
 	authReq.Body = ioutil.NopCloser(bytes.NewReader(buf))
 
-	rsp, httpCode, err := b.executeRequest(authReq)
+	res, httpCode, err := b.executeRequest(authReq)
 	if err != nil {
 		return err
 	}
 
 	if httpCode != 200 {
-		return err
+		return errors.New(fmt.Sprintf("Could not authenticate: HttpCode %v, message: %v", httpCode, string(res)))
 	}
 
-	log.Info(rsp)
 	var tokenRsp tokenResponse
-	err = json.Unmarshal(rsp, &tokenRsp)
+	err = json.Unmarshal(res, &tokenRsp)
 	if err != nil {
 		return err
 	}
@@ -194,7 +568,7 @@ func (b *BigIP) newAuthRequest(method, url string) (*request, error) {
 		return r, err
 	}
 	// basic auth
-	if b.AuthProvider == "" {
+	if b.AuthProvider == "tmos" {
 		r.Req.SetBasicAuth(b.User, b.Password)
 		return r, nil
 	}
@@ -207,231 +581,50 @@ func (b *BigIP) newAuthRequest(method, url string) (*request, error) {
 	return r, nil
 }
 
-func (b *BigIP) createPool(msg service.Message) error {
+// addPartitionToPath adds the name of the partition to the given name
+// ie: myPool in partition myPartition -> /myPartition/myPool
+func (b *BigIP) addPartitionToPath(name string) (fullName string) {
+	if b.Partition != "" {
+		return "/" + b.Partition + "/" + name
+	}
+	return name
+}
 
-	port := strconv.Itoa(b.getLBPort(msg))
+// addPartitionToName adds the name of the partition to the given name
+// ie: myPool in partition myPartition -> ~myPartition~myPool
+func (b *BigIP) addPartitionToName(name string) (fullName string) {
+	if b.Partition != "" {
+		return "~" + b.Partition + "~" + name
+	}
+	return name
+}
+
+// getPoolFromService returns a pool (name, hosts and port) from a Service
+func (b *BigIP) getPoolFromService(msg messaging.Message) pool {
+
 	var hosts []string
+
+	port := strconv.Itoa(msg.Service.Port)
+
 	for _, host := range msg.Service.Hosts {
-		hosts = append(hosts, host+":"+port)
+		hosts = append(hosts, b.addPartitionToPath("")+host+":"+port)
 	}
 
 	pool := pool{
-		Name:    msg.Service.Name,
-		Members: hosts,
+		Name:        b.addPartitionToPath(msg.Service.Name),
+		Members:     hosts,
+		Description: msg.Service.Name + " (by Interlook)",
+	}
+
+	if b.LoadBalancingMode != "" {
+		pool.LoadBalancingMode = b.LoadBalancingMode
 	}
 
 	if b.MonitorName != "" {
 		pool.Monitor = b.MonitorName
 	}
 
-	r, err := b.newAuthRequest(http.MethodPost, poolResource)
-	if err != nil {
-		return err
-	}
-
-	if err := r.setJSONBody(pool); err != nil {
-		return err
-	}
-
-	_, httpCode, err := b.executeRequest(r.Req)
-	if err != nil {
-		return err
-	}
-
-	if httpCode != http.StatusOK {
-		return errors.New("non 200 return code")
-	}
-
-	return nil
-}
-
-func (b *BigIP) addVirtualServer(msg service.Message, poolName string) error {
-
-	vs := virtualServer{
-		Name:        msg.Service.Name,
-		Destination: msg.Service.PublicIP + strconv.Itoa(b.getLBPort(msg)),
-		IPProtocol:  "tcp",
-		Pool:        poolName,
-	}
-	vs.SourceAddressTranslation.Type = "automap"
-
-	r, err := b.newAuthRequest(http.MethodPost, b.Endpoint+virtualServerResource)
-	if err != nil {
-		return err
-	}
-
-	if err := r.setJSONBody(vs); err != nil {
-		return err
-	}
-
-	_, httpCode, err := b.executeRequest(r.Req)
-	if err != nil {
-		return err
-	}
-
-	if httpCode != http.StatusOK {
-		return errors.New("non 200 return code")
-	}
-
-	return nil
-}
-
-func (b *BigIP) patchPoolDestination(vs virtualServerResponse, ip, port string) error {
-
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+virtualServerResource+vs.Name)
-	if err != nil {
-		return err
-	}
-
-	destinationCurrentHostPort := vs.Destination[strings.LastIndex(vs.Destination, "/")+1:]
-	destination := strings.TrimRight(vs.Destination, destinationCurrentHostPort) + ip + ":" + port
-
-	buf, err := json.Marshal(destination)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	r.Req.Body = ioutil.NopCloser(bytes.NewReader(buf))
-
-	return nil
-}
-
-func (b *BigIP) patchPoolMembers(msg service.Message) error {
-
-	var newPoolMembers poolMembers
-
-	for k, host := range msg.Service.Hosts {
-		newPoolMembers.Members[k].Address = host + strconv.Itoa(msg.Service.Port)
-	}
-
-	r, err := b.newAuthRequest(http.MethodPatch, b.Endpoint+poolResource+msg.Service.Name)
-	if err != nil {
-		return err
-	}
-
-	buf, err := json.Marshal(newPoolMembers)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	r.Req.Body = ioutil.NopCloser(bytes.NewReader(buf))
-
-	return nil
-}
-
-func (b *BigIP) getVirtualServerByName(poolName string) (vs virtualServerResponse, err error) {
-
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+poolName)
-	if err != nil {
-		return vs, err
-	}
-
-	response, httpCode, err := b.executeRequest(r.Req)
-	if err != nil {
-		return vs, err
-	}
-	if httpCode != 200 {
-		return vs, err
-	}
-
-	err = json.Unmarshal(response, &vs)
-	if err != nil {
-		return vs, err
-	}
-
-	return vs, nil
-}
-
-func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err error) {
-
-	var membersResponse poolMembersResponse
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+poolResource+poolName)
-	if err != nil {
-		return members, port, err
-	}
-
-	response, httpCode, err := b.executeRequest(r.Req)
-	if err != nil {
-		return members, port, err
-	}
-	if httpCode != 200 {
-		return members, port, err
-	}
-
-	err = json.Unmarshal(response, &membersResponse)
-	if err != nil {
-		return members, port, err
-	}
-
-	for _, member := range membersResponse.Items {
-		i := strings.LastIndex(member.FullPath, ":")
-		port, err = strconv.Atoi(member.FullPath[i+1:])
-		if err != nil {
-			return members, port, err
-		}
-		members = append(members, member.Address)
-	}
-
-	return members, port, nil
-}
-
-func (b *BigIP) isResourceExists(resourceName, resourceType string) (bool, error) {
-
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/tm/ltm/"+resourceType+"/"+resourceName)
-	if err != nil {
-		return false, err
-	}
-
-	_, httpCode, err := b.executeRequest(r.Req)
-	if err != nil {
-		return false, err
-	}
-	if httpCode != 200 {
-		return false, err
-	}
-
-	return true, nil
-}
-
-func (b *BigIP) testConnection() (httpRspCode int, err error) {
-	r, err := b.newAuthRequest(http.MethodGet, b.Endpoint+"/mgmt/shared/authz/tokens")
-	if err != nil {
-		return 0, err
-	}
-
-	_, httpCode, err := b.executeRequest(r.Req)
-	if err != nil {
-		return httpCode, err
-	}
-
-	if httpCode != 200 {
-		return httpCode, errors.New("could not establish connection")
-	}
-
-	return httpCode, nil
-}
-
-// Executes the raw request, does not parse response
-func (b *BigIP) executeRequest(r *http.Request) (responseBody []byte, httpCode int, err error) {
-
-	res, err := b.httpClient.Do(r)
-	if err != nil {
-		log.Error(err.Error())
-		return nil, 0, err
-	}
-	defer func() {
-		if err := res.Body.Close(); err != nil {
-			log.Errorf("Error closing body", err)
-		}
-	}()
-
-	body, readErr := ioutil.ReadAll(res.Body)
-	if readErr != nil {
-		log.Debugf(err.Error())
-		return body, res.StatusCode, err
-	}
-
-	return body, res.StatusCode, nil
+	return pool
 }
 
 func newHttpClient() *http.Client {
@@ -445,13 +638,4 @@ func newHttpClient() *http.Client {
 	}
 
 	return &httpClient
-}
-
-func (b *BigIP) msgToPool(msg service.Message) pool {
-	port := strconv.Itoa(b.getLBPort(msg))
-	var hosts []string
-	for _, host := range msg.Service.Hosts {
-		hosts = append(hosts, host+":"+port)
-	}
-
 }

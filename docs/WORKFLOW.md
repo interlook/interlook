@@ -20,7 +20,7 @@ When we get a new service definition from docker, we want to get an IP from our 
 
 In the yml config file, our workflow definition will be:
 
-`provider.docker,ipam.file`
+`provider.docker,ipam.ipalloc`
 
 The internal flow/message exchange will be like this:
 
@@ -36,15 +36,15 @@ The listener gets it and inject it to the workflow
                     wip:false
 ```
 
-### 2. The flowControl detects the new entry
+### 2. The workflowController detects the new entry
 
-flowControl check current state against the expected state. 
+workflowController check current state against the expected state. 
 
 If it does not match, sets the next step/extension, changes the status to "wip" and sends the message to the next extension (IPAM) 
 
 ```
 |workflow|  ->      flowControl     ->      |IPAM|
-                    state:ipam.file
+                    state:ipam.ipalloc
                     wip:true
 ```
 
@@ -54,15 +54,15 @@ IPAM extension does it's job and gets an IP for us. Then it sends back the messa
 
 ```
 |IPAM|      ->      Listener     ->      |workflow|
-state:ipam.file     state:ipam.file
+state:ipam.file     state:ipam.ipalloc
 wip:true            wip:false
 ```
 
 ### 4. Closing the flow
 
-In our example the IPAM extension is the last step of the workflow. 
+In our example the ipalloc extension is the last step of the workflow. 
 
-The flow control module detects that "ipam.file" is the last step in our workflow. 
+The flow control module detects that "ipam.ipalloc" is the last step in our workflow. 
 
 As we have reached the final step, it updates the entry's state to deployed, closing the flow.
 

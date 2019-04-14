@@ -1,12 +1,16 @@
-package service
+package messaging
 
-import "reflect"
+import (
+	"reflect"
+	"strings"
+)
 
 const (
 	//define message actions
-	AddAction    = "add"
-	UpdateAction = "update"
-	DeleteAction = "delete"
+	AddAction     = "add"
+	UpdateAction  = "update"
+	DeleteAction  = "delete"
+	RefreshAction = "refresh"
 )
 
 // Message holds config information with providers
@@ -19,7 +23,22 @@ type Message struct {
 	Service Service
 }
 
-// Service holds the containerized service
+// BuildMessage returns a message built on service information
+func BuildMessage(service Service, reverse bool) Message {
+	var msg Message
+
+	if reverse {
+		msg.Action = DeleteAction
+	} else {
+		msg.Action = AddAction
+	}
+
+	msg.Service = service
+
+	return msg
+}
+
+// Service holds the service definition
 type Service struct {
 	Provider   string   `json:"provider,omitempty"`
 	Name       string   `json:"name,omitempty"`
@@ -54,4 +73,21 @@ func (s *Service) IsSameThan(targetService Service) (bool, []string) {
 		return false, diff
 	}
 	return true, nil
+}
+
+// updateFromMsg update service with info coming from provider or ipam extensions only
+func (s *Service) UpdateFromMsg(msg Message) {
+	if strings.HasPrefix(msg.Sender, "provider.") {
+		s.Port = msg.Service.Port
+		s.Hosts = msg.Service.Hosts
+		s.TLS = msg.Service.TLS
+		s.DNSAliases = msg.Service.DNSAliases
+	}
+
+	if strings.HasPrefix(msg.Sender, "ipam.") {
+		s.PublicIP = msg.Service.PublicIP
+	}
+
+	s.Name = msg.Service.Name
+
 }

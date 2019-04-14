@@ -2,10 +2,12 @@ package core
 
 import (
 	"flag"
+	"fmt"
 	"github.com/bhuisgen/interlook/config"
 	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/service"
+	"github.com/bhuisgen/interlook/messaging"
 	"github.com/fatih/structs"
+	"github.com/pkg/errors"
 	"net/http"
 	"reflect"
 	"strings"
@@ -19,26 +21,43 @@ import (
 var (
 	//	srv        server
 	configFile string
-	Version    string
+	Version    = "dev"
 )
 
-// TODO: add deletion of closed, undeployed workflowEntries (runner + time param?)
+// extensionChannels holds the "activated" extensions's channels
+type extensionChannels struct {
+	name    string
+	receive chan messaging.Message
+	send    chan messaging.Message
+}
+
+func newExtensionChannels(name string) *extensionChannels {
+	p := new(extensionChannels)
+	p.name = name
+	p.send = make(chan messaging.Message)
+	p.receive = make(chan messaging.Message)
+
+	return p
+}
 
 // holds Interlook server config
 // Keeps a list of configured and started extensions
 type server struct {
-	config            *config.ServerConfiguration
-	signals           chan os.Signal
-	coreShutdown      chan bool
-	extensions        map[string]Extension
-	extensionChannels map[string]*extensionChannels
-	workflow          workflow
-	flowEntries       *workflowEntries
-	flowChan          chan service.Message
-	flowControlTicker *time.Ticker
-	coreWG            sync.WaitGroup // waitgroup for core processes sync
-	extensionsWG      sync.WaitGroup // waitgroup for extensions sync
-	apiServer         *http.Server
+	config                           *config.ServerConfiguration
+	signals                          chan os.Signal
+	workflowActivityLauncherShutdown chan bool
+	workflowHouseKeeperShutdown      chan bool
+	extensions                       map[string]Extension
+	extensionChannels                map[string]*extensionChannels
+	workflow                         workflow
+	workflowEntries                  *workflowEntries
+	workflowActivityLauncherTicker   *time.Ticker
+	workflowHousekeeperTicker        *time.Ticker
+	coreWG                           sync.WaitGroup
+	extensionsWG                     sync.WaitGroup
+	workflowActivityLauncherWG       sync.WaitGroup
+	workflowHousekeeperWG            sync.WaitGroup
+	apiServer                        *http.Server
 }
 
 // Start initialize server and run it
@@ -68,10 +87,11 @@ func initServer() (server, error) {
 	log.Debug("logger ok")
 
 	// init channels and maps
-	s.coreShutdown = make(chan bool)
 	s.signals = make(chan os.Signal, 1)
-	s.flowChan = make(chan service.Message)
-	s.flowControlTicker = time.NewTicker(s.config.Core.CheckFlowInterval)
+	s.workflowActivityLauncherShutdown = make(chan bool)
+	s.workflowHouseKeeperShutdown = make(chan bool)
+	s.workflowActivityLauncherTicker = time.NewTicker(s.config.Core.WorkflowControlInterval)
+	s.workflowHousekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeepingInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
 
 	// init workflow
@@ -81,8 +101,8 @@ func initServer() (server, error) {
 	s.initExtensions()
 
 	// init workflowEntries table
-	s.flowEntries = initWorkflowEntries()
-	if err := s.flowEntries.loadFile(s.config.Core.FlowEntriesFile); err != nil {
+	s.workflowEntries = initWorkflowEntries(s.config.Core.WorkflowEntriesFile)
+	if err := s.workflowEntries.loadFile(); err != nil {
 		log.Errorf("Could not load entries from file: %v", err)
 	}
 
@@ -94,7 +114,7 @@ func (s *server) initWorkflow() workflow {
 	var wf workflow
 	wf = make(map[int]string)
 
-	for k, v := range strings.Split(s.config.Core.Workflow, ",") {
+	for k, v := range strings.Split(s.config.Core.WorkflowSteps, ",") {
 		wf[k+1] = v
 	}
 
@@ -102,7 +122,7 @@ func (s *server) initWorkflow() workflow {
 	// useful if we want to use real transitions later
 	wf[0] = undeployedState
 	wf[len(wf)] = deployedState
-
+	log.Infof("Workflow initialized %v", wf)
 	return wf
 }
 
@@ -123,6 +143,7 @@ func (s *server) initExtensions() {
 					for _, n := range srvConf.Field(f.Name()).Fields() {
 						if strings.ToLower(n.Name()) == extName {
 							s.extensions[step] = n.Value().(Extension)
+							log.Infof("Extension %v initialized", step)
 						}
 					}
 				}
@@ -136,14 +157,17 @@ func (s *server) run() {
 	signal.Notify(s.signals, os.Interrupt)
 	signal.Notify(s.signals, os.Kill)
 
-	// run workflowControl
+	// run workflowActivityLauncher
 	s.coreWG.Add(1)
-	go s.workflowControlRunner()
+	go s.workflowActivityLauncher()
+
+	// run workflowHouseKeeper
+	s.coreWG.Add(1)
+	go s.workflowHousekeeper()
 
 	// start all configured extensions
 	// for each one, starts a dedicated listener goroutine
 	for name, extension := range s.extensions {
-		log.Printf("adding %v to extensionChannels", name)
 		extensionChannels := newExtensionChannels(name)
 		s.extensionChannels[name] = extensionChannels
 
@@ -172,6 +196,10 @@ func (s *server) run() {
 	// SIGs to handle proper extensions and core components shutdown
 	go func() {
 		for range s.signals {
+			log.Info("Stopping workflow manager")
+			s.workflowActivityLauncherShutdown <- true
+			s.workflowHouseKeeperShutdown <- true
+
 			for name, extension := range s.extensions {
 				log.Infof("Stopping extension %v", name)
 				if err := extension.Stop(); err != nil {
@@ -179,128 +207,171 @@ func (s *server) run() {
 				}
 			}
 			s.extensionsWG.Wait()
+			log.Info("All extensions are down")
 			s.stopAPI()
-			s.coreShutdown <- true
 		}
 	}()
 
 	s.coreWG.Wait()
+	if err := s.workflowEntries.save(); err != nil {
+		log.Error(err.Error())
+	}
+	log.Infof("Saved flow entries to %v", s.config.Core.WorkflowEntriesFile)
 }
 
 // extensionListener gets messages from extensions and send them to workflow
 // tag messages with sender
 // no need to handle shutdown as corresponding extensions will do
 func (s *server) extensionListener(extension *extensionChannels) {
-	log.Debugf("Listening for %v messages", extension.name)
+	log.Infof("extensionListener for %v started", extension.name)
 
 	for {
 		newMessage := <-extension.send
+		s.coreWG.Add(1)
 		// tag the message with it's sender
 		newMessage.Sender = extension.name
 
-		log.Debugf("Received message from %v, sending to flow control\n", extension.name)
+		log.Debugf("Received message from %v, sending to message handler", extension.name)
 
 		// inject message to workflow
-		if err := s.flowEntries.messageHandler(newMessage); err != nil {
+		if err := s.workflowEntries.messageHandler(newMessage); err != nil {
 			log.Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
 		}
+		s.coreWG.Done()
 	}
 }
 
-// workflowControlRunner runs workflowControl every x seconds
-func (s *server) workflowControlRunner() {
+// workflowActivityLauncher triggers required action(s) to bring service state
+// to desired state (deployed or undeployed)
+func (s *server) workflowActivityLauncher() {
+
 	for {
 		select {
-		case <-s.coreShutdown:
-			log.Info("Stopping FlowControl")
-			if err := s.flowEntries.save(s.config.Core.FlowEntriesFile); err != nil {
-				log.Error(err.Error())
+		case <-s.workflowActivityLauncherShutdown:
+			log.Info("Stopping workflowActivityLauncher")
+
+			s.workflowActivityLauncherWG.Wait()
+			s.coreWG.Done()
+
+			return
+
+		case <-s.workflowActivityLauncherTicker.C:
+			s.workflowActivityLauncherWG.Add(1)
+			log.Debug("Running workflowActivityLauncher")
+			for k, v := range s.workflowEntries.Entries {
+				if v.State != v.ExpectedState && !v.WorkInProgress {
+
+					reverse := v.isReverse()
+
+					logAction := "Deploying"
+					if reverse {
+						logAction = "Un-deploying"
+					}
+
+					if v.Error != "" && v.CloseTime.IsZero() {
+						log.Warnf("Service %v is in error %v", v.Service.Name, v.Error)
+						continue
+					}
+
+					log.Debugf("workflowActivityLauncher: Service %v current state differs from target state", k)
+
+					nextStep, err := s.workflow.getNextStep(v.State, reverse)
+					if err != nil {
+						log.Errorf("Could not find next step for %v %v\n", k, err)
+						continue
+					}
+					log.Debugf("next step: %v", nextStep)
+
+					if s.workflow.isLastStep(nextStep, reverse) {
+						log.Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
+						s.workflowEntries.closeEntry(k, "", reverse)
+						continue
+					}
+
+					s.workflowEntries.setNextStep(k, nextStep, reverse)
+
+					msg := messaging.BuildMessage(v.Service, reverse)
+					log.Debugf("activityLauncher msg: %v to: %v", msg, nextStep)
+					log.Infof("%v service %v -> %v", logAction, msg.Service.Name, nextStep)
+					s.sendMessageToExtension(msg, nextStep)
+
+				}
 			}
-			log.Infof("Saved flow entries to %v", s.config.Core.FlowEntriesFile)
+			if err := s.workflowEntries.save(); err != nil {
+				log.Errorf("Error saving entries to file %v", err.Error())
+			}
+			s.workflowActivityLauncherWG.Done()
+		}
+	}
+}
+
+func (s *server) workflowHousekeeper() {
+	for {
+		select {
+		case <-s.workflowHouseKeeperShutdown:
+			log.Info("Stopping workflowHousekeeper")
 			s.coreWG.Done()
 			return
-		case <-s.flowControlTicker.C:
-			log.Debug("Running workflowControl")
-			s.workflowControl()
+
+		case <-s.workflowHousekeeperTicker.C:
+			s.workflowHousekeeperWG.Add(1)
+			log.Debug("Running workflowHousekeeper")
+			s.workflowEntries.Lock()
+			for k, v := range s.workflowEntries.Entries {
+				if v.State == v.ExpectedState && !v.WorkInProgress {
+					// remove old closed entry
+					if v.State == undeployedState && time.Now().Sub(v.CloseTime) > s.config.Core.CleanUndeployedServiceAfter {
+						delete(s.workflowEntries.Entries, k)
+					}
+					// ask refresh to provider
+					if time.Now().Sub(v.LastUpdate) > s.config.Core.ServiceMaxLastUpdated && v.State == deployedState {
+						err := s.refreshService(v.Service.Name)
+						if err != nil {
+							log.Errorf("Error sending service refresh to provider %v", err)
+						}
+					}
+				}
+				// closing of WIP timed out
+				if v.WorkInProgress && time.Now().Sub(v.WIPTime) > s.config.Core.ServiceWIPTimeout {
+					errorMsg := fmt.Sprintf("Closed due to ServiceWIPTimeout reached at step %v. Err: %v", v.State, v.Error)
+					s.workflowEntries.closeEntry(v.Service.Name, errorMsg, v.isReverse())
+
+					log.Warn(errorMsg)
+				}
+				// add closing of in error flows
+			}
+			s.workflowHousekeeperWG.Done()
 		}
+		s.workflowEntries.Unlock()
 	}
 }
 
-// workflowControl compares received service definition with existing one
-// triggers required action(s) to bring service state
-// to desired state (deployed or undeployed)
-func (s *server) workflowControl() {
-	for k, v := range s.flowEntries.M {
-		if v.State != v.ExpectedState && !v.WorkInProgress {
-			var msg service.Message
+func (s *server) refreshService(serviceName string) error {
+	log.Infof("Sending refresh request for %v", serviceName)
+	for name, extension := range s.extensions {
 
-			if v.Error != "" {
-				log.Warnf("Service %v is in error %v", v.Service.Name, v.Error)
-				continue
+		_, ok := extension.(Provider)
+		if ok {
+			msg := messaging.Message{
+				Action: messaging.RefreshAction,
+				Service: messaging.Service{
+					Name: serviceName,
+				},
 			}
-
-			log.Debugf("workflowControl: Service %v current state differs from target state", k)
-			reverse := false
-			if v.ExpectedState == undeployedState {
-				reverse = true
-			}
-
-			nextStep, err := s.workflow.getNextStep(v.State, reverse)
-			if err != nil {
-				log.Errorf("Could not find next step for %v %v\n", k, err)
-				continue
-			}
-			log.Debugf("next step: %v", nextStep)
-
-			if s.workflow.isLastStep(nextStep, reverse) {
-				log.Debugf("Closing flow entry %v (state: %v)\n", k, nextStep)
-				s.flowEntries.closeEntry(k, reverse)
-				continue
-			}
-
-			s.flowEntries.prepareForNextStep(k, nextStep, reverse)
-
-			if reverse {
-				msg.Action = service.DeleteAction
-			} else {
-				msg.Action = service.AddAction
-			}
-
-			msg.Service = v.Service
-			// get the extension channel to write message to
-			ext, ok := s.extensionChannels[nextStep]
-			if !ok {
-				log.Errorf("workflowControl could not find channel for ext %v\n", nextStep)
-				continue
-			}
-
-			ext.receive <- msg
+			log.Debugf("Sending refresh request to %v", name)
+			s.sendMessageToExtension(msg, name)
+			return nil
 		}
 	}
+	return errors.New("Could not send refresh message to provider")
 }
 
-func (s *server) cleanUndeployed() {
-	s.flowEntries.Lock()
-	defer s.flowEntries.Unlock()
-	for k, v := range s.flowEntries.M {
-		if v.State == v.ExpectedState && !v.WorkInProgress && v.State == undeployedState {
-			delete(s.flowEntries.M, k)
-		}
+func (s *server) sendMessageToExtension(msg messaging.Message, extensionName string) {
+	// get the extension channel to write message to
+	ext, ok := s.extensionChannels[extensionName]
+	if !ok {
+		log.Errorf("Could not find channel for ext %v\n", extensionName)
 	}
-}
 
-// extensionChannels holds the "activated" extensions's channels
-type extensionChannels struct {
-	name    string
-	receive chan service.Message
-	send    chan service.Message
-}
-
-func newExtensionChannels(name string) *extensionChannels {
-	p := new(extensionChannels)
-	p.name = name
-	p.send = make(chan service.Message)
-	p.receive = make(chan service.Message)
-
-	return p
+	ext.receive <- msg
 }

@@ -7,22 +7,29 @@ type getTokenPayload struct {
 }
 
 type pool struct {
-	Name    string   `json:"name"`
-	Monitor string   `json:"monitor"`
-	Members []string `json:"members"`
+	Name              string   `json:"name"`
+	Monitor           string   `json:"monitor"`
+	Description       string   `json:"description"`
+	LoadBalancingMode string   `json:"loadBalancingMode"`
+	Members           []string `json:"members"`
 }
 
 type poolMembers struct {
-	Members []struct {
-		Address string `json:"address"`
-	} `json:"members"`
+	Members   []member `json:"members"`
+	Partition string   `json:"partition,omitempty"`
+}
+
+type member struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
 }
 
 type virtualServer struct {
 	Name                     string `json:"name"`
+	Description              string `json:"description"`
 	Destination              string `json:"destination"`
 	IPProtocol               string `json:"ipProtocol"`
-	Pool                     string `json:"poolResource"`
+	Pool                     string `json:"pool"`
 	SourceAddressTranslation struct {
 		Type string `json:"type"`
 	} `json:"sourceAddressTranslation"`
@@ -133,26 +140,36 @@ type poolMembersResponse struct {
 	} `json:"items"`
 }
 
-// https://f5IP/mgmt/shared/authz/users/{user}
-type authSelfTestResponse struct {
-	Name             string `json:"name"`
-	DisplayName      string `json:"displayName"`
-	Shell            string `json:"shell"`
-	Generation       int    `json:"generation"`
-	LastUpdateMicros int    `json:"lastUpdateMicros"`
-	Kind             string `json:"kind"`
-	SelfLink         string `json:"selfLink"`
+type destinationPayload struct {
+	Destination string `json:"destination"`
+	Partition   string `json:"partition,omitempty"`
 }
 
-type transaction struct {
-	TransID          int64  `json:"transId"`
-	State            string `json:"state"`
-	TimeoutSeconds   int    `json:"timeoutSeconds"`
-	AsyncExecution   bool   `json:"asyncExecution"`
-	ValidateOnly     bool   `json:"validateOnly"`
-	ExecutionTimeout int    `json:"executionTimeout"`
-	ExecutionTime    int    `json:"executionTime"`
-	FailureReason    string `json:"failureReason"`
-	Kind             string `json:"kind"`
-	SelfLink         string `json:"selfLink"`
+type deleteResourcePayload struct {
+	FullPath  string `json:"fullPath"`
+	Partition string `json:"partition,omitempty"`
 }
+
+// https://f5IP/mgmt/shared/authz/users/{user}
+//type authSelfTestResponse struct {
+//	Name             string `json:"name"`
+//	DisplayName      string `json:"displayName"`
+//	Shell            string `json:"shell"`
+//	Generation       int    `json:"generation"`
+//	LastUpdateMicros int    `json:"lastUpdateMicros"`
+//	Kind             string `json:"kind"`
+//	SelfLink         string `json:"selfLink"`
+//}
+//
+//type transaction struct {
+//	TransID          int64  `json:"transId"`
+//	State            string `json:"state"`
+//	TimeoutSeconds   int    `json:"timeoutSeconds"`
+//	AsyncExecution   bool   `json:"asyncExecution"`
+//	ValidateOnly     bool   `json:"validateOnly"`
+//	ExecutionTimeout int    `json:"executionTimeout"`
+//	ExecutionTime    int    `json:"executionTime"`
+//	FailureReason    string `json:"failureReason"`
+//	Kind             string `json:"kind"`
+//	SelfLink         string `json:"selfLink"`
+//}
