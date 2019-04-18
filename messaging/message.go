@@ -2,7 +2,6 @@ package messaging
 
 import (
 	"reflect"
-	"strings"
 )
 
 const (
@@ -18,9 +17,10 @@ type Message struct {
 	// add update or remove
 	Action string
 	// will be filled by core's extensionListener
-	Sender  string
-	Error   string
-	Service Service
+	Sender      string
+	Destination string
+	Error       string
+	Service     Service
 }
 
 // BuildMessage returns a message built on service information
@@ -73,21 +73,4 @@ func (s *Service) IsSameThan(targetService Service) (bool, []string) {
 		return false, diff
 	}
 	return true, nil
-}
-
-// updateFromMsg update service with info coming from provider or ipam extensions only
-func (s *Service) UpdateFromMsg(msg Message) {
-	if strings.HasPrefix(msg.Sender, "provider.") {
-		s.Port = msg.Service.Port
-		s.Hosts = msg.Service.Hosts
-		s.TLS = msg.Service.TLS
-		s.DNSAliases = msg.Service.DNSAliases
-	}
-
-	if strings.HasPrefix(msg.Sender, "ipam.") {
-		s.PublicIP = msg.Service.PublicIP
-	}
-
-	s.Name = msg.Service.Name
-
 }
