@@ -89,6 +89,16 @@ func (w workflowSteps) isLastStep(step string, reverse bool) bool {
 	return true
 }
 
+func (w workflowSteps) getTransition(step string) workflowState {
+
+	for _, workflowStep := range w {
+		if workflowStep.name == step {
+			return workflowStep.transition
+		}
+	}
+	return nil
+}
+
 // getNextStep returns the next step for a given step
 // set reverse to true to get next step when undeploying a service
 func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep string, next workflowState, err error) {
@@ -125,9 +135,9 @@ func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep s
 	}
 
 	// we do not send messages to providers
-	//if strings.HasPrefix(nextStep, "provider.") {
-	//    nextStep, next, _ = w.getNextStep(nextStep, reverse)
-	//}
+	if strings.HasPrefix(nextStep, "provider.") {
+		nextStep, next, _ = w.getNextStep(nextStep, reverse)
+	}
 
 	return nextStep, next, nil
 }
@@ -195,6 +205,12 @@ func (we *workflowEntry) setLastUpdate() {
 	we.Unlock()
 }
 
+func (we *workflowEntry) setTransition(state string) {
+	we.Lock()
+	we.next = workflow.getTransition(state)
+	we.Unlock()
+}
+
 // setNextStep set the next workflow step of the entry
 func (we *workflowEntry) setNextStep() {
 
@@ -225,7 +241,7 @@ func (we *workflowEntry) setState(msg messaging.Message, wip bool) {
 // updateFromMsg update service with info coming from provider or ipam extensions only
 func (we *workflowEntry) updateServiceFromMsg(msg messaging.Message) {
 	we.Lock()
-	if strings.HasPrefix(msg.Sender, "provider.") {
+	if strings.HasPrefix(msg.Sender, "provider.") && msg.Action != messaging.DeleteAction {
 		we.Service.Port = msg.Service.Port
 		we.Service.Hosts = msg.Service.Hosts
 		we.Service.TLS = msg.Service.TLS
@@ -334,6 +350,7 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 
 	if !we.isServiceNeedUpdate(msg) {
 		log.Debugf("Service %v already in desired state\n", msg.Service.Name)
+		we.Entries[msg.Service.Name].setLastUpdate()
 		// add update timestamp
 		return nil
 	}
@@ -350,7 +367,7 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 	entry, _ := we.Entries[msg.Service.Name]
 	entry.updateServiceFromMsg(msg)
 	entry.setLastUpdate()
-
+	entry.setTransition(msg.Sender)
 	go entry.next.execTransition(entry, msg)
 
 	return nil

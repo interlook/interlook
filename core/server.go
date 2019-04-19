@@ -222,12 +222,12 @@ func (s *server) workflowHousekeeper() {
 					if entry.State == undeployedState && time.Now().Sub(entry.CloseTime) > s.config.Core.CleanUndeployedServiceAfter {
 						delete(s.workflowEntries.Entries, k)
 					}
-					// ask refresh to provider
-					if time.Now().Sub(entry.LastUpdate) > s.config.Core.ServiceMaxLastUpdated && entry.State == deployedState {
-						err := s.refreshService(entry.Service.Name)
-						if err != nil {
-							log.Errorf("Error sending service refresh to provider %entry", err)
-						}
+				}
+				// ask refresh to provider
+				if time.Now().Sub(entry.LastUpdate) > s.config.Core.ServiceMaxLastUpdated && entry.State == deployedState {
+					err := s.refreshService(entry.Service.Name)
+					if err != nil {
+						log.Errorf("Error sending service refresh to provider %entry", err)
 					}
 				}
 				// closing of WIP timed out
