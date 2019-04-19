@@ -75,13 +75,13 @@ func (w workflowSteps) isLastStep(step string, reverse bool) bool {
 	if !reverse {
 		id = len(w) - 1
 	}
-	log.Debugf("########## isLast ID:%v", id)
+
 	for _, step := range w {
 		if step.id == id {
 			lastStep = step.name
 		}
 	}
-	log.Debugf("########## isLast lastStep %v:%v", step, lastStep)
+
 	if step != lastStep {
 		return false
 	}

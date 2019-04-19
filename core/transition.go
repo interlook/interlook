@@ -102,7 +102,7 @@ func (s *provisionerState) execTransition(we *workflowEntry, msg messaging.Messa
 
 		we.updateServiceFromMsg(msg)
 		we.setNextStep()
-		log.Debugf("########################## state after setNext %v", we.State)
+
 		if workflow.isLastStep(we.State, we.isReverse()) {
 			we.next = &closeState{}
 			we.next.execTransition(we, msg)
