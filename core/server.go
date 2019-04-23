@@ -97,7 +97,7 @@ func (s *server) initExtensions() {
 
 	// get needed extensions from workflow
 	for _, step := range workflow {
-		ext := strings.Split(step.name, ".")
+		ext := strings.Split(step.Name, ".")
 		if len(ext) == 2 {
 			extType := strings.ToLower(ext[0])
 			extName := strings.ToLower(ext[1])
@@ -106,7 +106,7 @@ func (s *server) initExtensions() {
 				if strings.ToLower(f.Name()) == extType && f.Kind() == reflect.Struct {
 					for _, n := range srvConf.Field(f.Name()).Fields() {
 						if strings.ToLower(n.Name()) == extName {
-							s.extensions[step.name] = n.Value().(Extension)
+							s.extensions[step.Name] = n.Value().(Extension)
 							log.Infof("Extension %v initialized", step)
 						}
 					}
@@ -277,6 +277,7 @@ func (s *server) sendMessageToExtension(msg messaging.Message, extensionName str
 	ext, ok := s.extensionChannels[extensionName]
 	if !ok {
 		log.Errorf("Could not find channel for ext %v\n", extensionName)
+		return
 	}
 
 	ext.receive <- msg

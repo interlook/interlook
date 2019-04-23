@@ -17,12 +17,12 @@ type workflowState interface {
 type providerState struct{}
 
 func (s *providerState) execTransition(we *workflowEntry, msg messaging.Message) {
-	reverse := false
+
 	switch msg.Action {
 	case messaging.AddAction:
 		we.setLastUpdate()
 		we.next = &providerAddState{}
-		we.setState(msg, reverse)
+		we.setState(msg, false)
 	case messaging.DeleteAction:
 		we.next = &providerDeleteState{}
 	default:
@@ -72,7 +72,7 @@ func (s *providerDeleteState) execTransition(we *workflowEntry, msg messaging.Me
 	if !we.WorkInProgress {
 		we.setExpectedState(undeployedState)
 		we.setNextStep()
-		// update service with entry info as provider might not have all info anymore (ie host, dns alias)
+		// update service with entry info as provider might not have all info in case service is un-deployed (ie host, dns alias)
 		msg.Service = we.Service
 		we.next.execTransition(we, msg)
 	}
@@ -113,7 +113,7 @@ func (s *provisionerState) execTransition(we *workflowEntry, msg messaging.Messa
 
 		return
 	} else {
-		// transition triggered by previous state
+		// Transition triggered by previous state
 		log.Debugf("Provisioner %v for entry %v", we.State, we)
 		if msg.Error != "" {
 			// handle flow in error

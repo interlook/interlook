@@ -24,9 +24,9 @@ const (
 type workflowSteps []workflowStep
 
 type workflowStep struct {
-	id         int
-	name       string
-	transition workflowState
+	ID         int
+	Name       string
+	Transition workflowState
 }
 
 // initialize the workflow from config
@@ -44,23 +44,23 @@ func initWorkflow(workflowConfig string) {
 		}
 
 		workflow = append(workflow, workflowStep{
-			id:         k + 1,
-			name:       v,
-			transition: transitionState,
+			ID:         k + 1,
+			Name:       v,
+			Transition: transitionState,
 		})
 	}
 
 	// add start and end steps to workflow
 	workflow = append(workflow, workflowStep{
-		id:         0,
-		name:       undeployedState,
-		transition: &closeState{},
+		ID:         0,
+		Name:       undeployedState,
+		Transition: &closeState{},
 	})
 
 	workflow = append(workflow, workflowStep{
-		id:         len(workflow),
-		name:       deployedState,
-		transition: &closeState{},
+		ID:         len(workflow),
+		Name:       deployedState,
+		Transition: &closeState{},
 	})
 
 	log.Infof("workflow initialized %v", workflow)
@@ -77,8 +77,8 @@ func (w workflowSteps) isLastStep(step string, reverse bool) bool {
 	}
 
 	for _, step := range w {
-		if step.id == id {
-			lastStep = step.name
+		if step.ID == id {
+			lastStep = step.Name
 		}
 	}
 
@@ -92,8 +92,8 @@ func (w workflowSteps) isLastStep(step string, reverse bool) bool {
 func (w workflowSteps) getTransition(step string) workflowState {
 
 	for _, workflowStep := range w {
-		if workflowStep.name == step {
-			return workflowStep.transition
+		if workflowStep.Name == step {
+			return workflowStep.Transition
 		}
 	}
 	return nil
@@ -106,9 +106,9 @@ func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep s
 	var stepID int
 
 	for _, v := range w {
-		if v.name == currentStep {
+		if v.Name == currentStep {
 			found = true
-			stepID = v.id
+			stepID = v.ID
 		}
 	}
 
@@ -123,9 +123,9 @@ func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep s
 	}
 
 	for _, step := range w {
-		if step.id == stepID {
-			nextStep = step.name
-			next = step.transition
+		if step.ID == stepID {
+			nextStep = step.Name
+			next = step.Transition
 			found = true
 		}
 	}
@@ -223,6 +223,8 @@ func (we *workflowEntry) setNextStep() {
 	we.Lock()
 	we.State = nextStep
 	we.next = next
+	we.WorkInProgress =false
+	we.WIPTime = time.Time{}
 	we.CloseTime = time.Time{}
 	we.Unlock()
 
