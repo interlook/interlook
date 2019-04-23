@@ -204,6 +204,7 @@ func (s *server) extensionListener(extension *extensionChannels) {
 	}
 }
 
+// workflowHousekeeper
 func (s *server) workflowHousekeeper() {
 	for {
 		select {

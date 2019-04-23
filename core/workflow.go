@@ -193,7 +193,7 @@ func (we *workflowEntry) setWIP(wip bool) {
 	we.Unlock()
 }
 
-func (we *workflowEntry) setExpectedState(state string) {
+func (we *workflowEntry) setTargetState(state string) {
 	we.Lock()
 	we.ExpectedState = state
 	we.Unlock()
@@ -223,7 +223,7 @@ func (we *workflowEntry) setNextStep() {
 	we.Lock()
 	we.State = nextStep
 	we.next = next
-	we.WorkInProgress =false
+	we.WorkInProgress = false
 	we.WIPTime = time.Time{}
 	we.CloseTime = time.Time{}
 	we.Unlock()
@@ -353,7 +353,6 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 	if !we.isServiceNeedUpdate(msg) {
 		log.Debugf("Service %v already in desired state\n", msg.Service.Name)
 		we.Entries[msg.Service.Name].setLastUpdate()
-		// add update timestamp
 		return nil
 	}
 
@@ -368,8 +367,8 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 
 	entry, _ := we.Entries[msg.Service.Name]
 	entry.updateServiceFromMsg(msg)
-	entry.setLastUpdate()
 	entry.setTransition(msg.Sender)
+
 	go entry.next.execTransition(entry, msg)
 
 	return nil
