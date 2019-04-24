@@ -20,26 +20,26 @@ import (
 
 var (
 	//	srv        server
-	configFile         string
-	Version            = "dev"
-	workflow           workflowSteps
-	coreForwardMessage chan messaging.Message
+	configFile     string
+	Version        = "dev"
+	workflow       workflowSteps
+	msgToExtension chan messaging.Message
 )
 
 // holds Interlook server config
 // Keeps a list of configured and started extensions
 type server struct {
-	config                      *config.ServerConfiguration
-	apiServer                   *http.Server
-	coreWG                      sync.WaitGroup
-	extensionsWG                sync.WaitGroup
-	signals                     chan os.Signal
-	extensions                  map[string]Extension
-	extensionChannels           map[string]*extensionChannels
-	workflowEntries             *workflowEntries
-	workflowHousekeeperTicker   *time.Ticker
-	workflowHouseKeeperShutdown chan bool
-	workflowHousekeeperWG       sync.WaitGroup
+	config              *config.ServerConfiguration
+	apiServer           *http.Server
+	coreWG              sync.WaitGroup
+	extensionsWG        sync.WaitGroup
+	signals             chan os.Signal
+	extensions          map[string]Extension
+	extensionChannels   map[string]*extensionChannels
+	workflowEntries     *workflowEntries
+	housekeeperTicker   *time.Ticker
+	housekeeperShutdown chan bool
+	housekeeperWG       sync.WaitGroup
 }
 
 // Start initialize server and run it
@@ -70,10 +70,10 @@ func initServer() (server, error) {
 
 	// init channels and maps
 	s.signals = make(chan os.Signal, 1)
-	s.workflowHouseKeeperShutdown = make(chan bool)
-	s.workflowHousekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeeperInterval)
+	s.housekeeperShutdown = make(chan bool)
+	s.housekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeeperInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
-	coreForwardMessage = make(chan messaging.Message)
+	msgToExtension = make(chan messaging.Message)
 
 	// init workflow
 	initWorkflow(s.config.Core.WorkflowSteps)
@@ -83,7 +83,7 @@ func initServer() (server, error) {
 
 	// init workflowEntries table
 	s.workflowEntries = initWorkflowEntries(s.config.Core.WorkflowEntriesFile)
-	if err := s.workflowEntries.loadFile(); err != nil {
+	if err := s.workflowEntries.load(); err != nil {
 		log.Errorf("Could not load entries from file: %v", err)
 	}
 
@@ -123,7 +123,7 @@ func (s *server) run() {
 
 	// run workflowHouseKeeper
 	s.coreWG.Add(1)
-	go s.workflowHousekeeper()
+	go s.housekeeper()
 
 	// run messageForwarder
 	go s.messageSender()
@@ -161,7 +161,7 @@ func (s *server) run() {
 		for range s.signals {
 			log.Info("Stopping workflow manager")
 
-			s.workflowHouseKeeperShutdown <- true
+			s.housekeeperShutdown <- true
 
 			for name, extension := range s.extensions {
 				log.Infof("Stopping extension %v", name)
@@ -197,25 +197,25 @@ func (s *server) extensionListener(extension *extensionChannels) {
 		log.Debugf("Received message from %v, sending to message handler", extension.name)
 
 		// inject message to workflow
-		if err := s.workflowEntries.messageHandler(newMessage); err != nil {
+		if err := s.workflowEntries.mergeMessage(newMessage); err != nil {
 			log.Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
 		}
 		s.coreWG.Done()
 	}
 }
 
-// workflowHousekeeper
-func (s *server) workflowHousekeeper() {
+// housekeeper
+func (s *server) housekeeper() {
 	for {
 		select {
-		case <-s.workflowHouseKeeperShutdown:
-			log.Info("Stopping workflowHousekeeper")
+		case <-s.housekeeperShutdown:
+			log.Info("Stopping housekeeper")
 			s.coreWG.Done()
 			return
 
-		case <-s.workflowHousekeeperTicker.C:
-			s.workflowHousekeeperWG.Add(1)
-			log.Debug("Running workflowHousekeeper")
+		case <-s.housekeeperTicker.C:
+			s.housekeeperWG.Add(1)
+			log.Debug("Running housekeeper")
 			s.workflowEntries.Lock()
 			for k, entry := range s.workflowEntries.Entries {
 				if entry.State == entry.ExpectedState && !entry.WorkInProgress {
@@ -239,7 +239,7 @@ func (s *server) workflowHousekeeper() {
 				}
 				// add closing of in error flows
 			}
-			s.workflowHousekeeperWG.Done()
+			s.housekeeperWG.Done()
 		}
 		s.workflowEntries.Unlock()
 	}
@@ -267,7 +267,7 @@ func (s *server) refreshService(serviceName string) error {
 
 func (s *server) messageSender() {
 	for {
-		msg := <-coreForwardMessage
+		msg := <-msgToExtension
 		log.Debugf("Forwarding msg %v", msg)
 		s.sendMessageToExtension(msg, msg.Destination)
 	}

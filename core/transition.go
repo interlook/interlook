@@ -7,24 +7,24 @@ import (
 	"strings"
 )
 
-type workflowState interface {
-	execTransition(*workflowEntry, messaging.Message)
+type transition interface {
+	execute(*workflowEntry, messaging.Message)
 }
 
 type providerState struct{}
 
-func (s *providerState) execTransition(we *workflowEntry, msg messaging.Message) {
+func (s *providerState) execute(we *workflowEntry, msg messaging.Message) {
 
 	switch msg.Action {
 	case messaging.AddAction:
 		we.setLastUpdate()
 		we.setTargetState(deployedState)
 		we.Lock()
-		we.next = &providerAddState{}
+		we.transition = &providerAddState{}
 		we.Unlock()
 		we.setState(msg, false)
 	case messaging.DeleteAction:
-		we.next = &providerDeleteState{}
+		we.transition = &providerDeleteState{}
 	default:
 		logMsg := fmt.Sprintf("Unhandled action %v", msg.Action)
 		we.setError(logMsg)
@@ -32,12 +32,12 @@ func (s *providerState) execTransition(we *workflowEntry, msg messaging.Message)
 		return
 	}
 	log.Debugf("ProviderState got msg %v", msg)
-	we.next.execTransition(we, msg)
+	we.transition.execute(we, msg)
 }
 
 type providerAddState struct{}
 
-func (s *providerAddState) execTransition(we *workflowEntry, msg messaging.Message) {
+func (s *providerAddState) execute(we *workflowEntry, msg messaging.Message) {
 	log.Debugf("ProviderAddState got msg %v", msg)
 	if msg.Action != messaging.AddAction || !strings.HasPrefix(msg.Sender, "provider.") {
 		logMsg := fmt.Sprintf("%v action not allowed from %v in state %v %v", msg.Action, msg.Sender, we.State, we.Service.Name)
@@ -52,19 +52,19 @@ func (s *providerAddState) execTransition(we *workflowEntry, msg messaging.Messa
 	}
 
 	we.setNextStep()
-	we.next.execTransition(we, msg)
+	we.transition.execute(we, msg)
 }
 
 type providerDeleteState struct{}
 
-func (s *providerDeleteState) execTransition(we *workflowEntry, msg messaging.Message) {
+func (s *providerDeleteState) execute(we *workflowEntry, msg messaging.Message) {
 	if msg.Action != messaging.DeleteAction || !strings.HasPrefix(msg.Sender, "provider.") {
 		logMsg := fmt.Sprintf("%v action not allowed in state %v %v", msg.Action, we.State, we.Service.Name)
 		log.Warn(logMsg)
 		return
 	}
 
-	// if WIP, we set entry to next step before roll backing
+	// if WIP, we set entry to transition step before roll backing
 	// so that current step is also rolled back
 	if we.WorkInProgress {
 		we.setNextStep()
@@ -74,12 +74,12 @@ func (s *providerDeleteState) execTransition(we *workflowEntry, msg messaging.Me
 	we.setNextStep()
 	// update service with entry info as provider might not have all info in case service is un-deployed (ie host, dns alias)
 	msg.Service = we.Service
-	we.next.execTransition(we, msg)
+	we.transition.execute(we, msg)
 }
 
 type provisionerState struct{}
 
-func (s *provisionerState) execTransition(we *workflowEntry, msg messaging.Message) {
+func (s *provisionerState) execute(we *workflowEntry, msg messaging.Message) {
 	log.Debugf("ProvisionerState got msg %v", msg)
 
 	// if wip, we expect an update from extension (meaning through message)
@@ -99,15 +99,15 @@ func (s *provisionerState) execTransition(we *workflowEntry, msg messaging.Messa
 			return
 		}
 
-		we.updateServiceFromMsg(msg)
+		we.updateService(msg)
 		we.setNextStep()
 
 		if workflow.isLastStep(we.State, we.isReverse()) {
-			we.next = &closeState{}
-			we.next.execTransition(we, msg)
+			we.transition = &closeState{}
+			we.transition.execute(we, msg)
 			return
 		}
-		log.Debugf("ProvisionerState sending %v state %v to next", msg.Service.Name, we.State)
+		log.Debugf("ProvisionerState sending %v state %v to transition", msg.Service.Name, we.State)
 		we.sendToExtension()
 		return
 	} else {
@@ -120,7 +120,7 @@ func (s *provisionerState) execTransition(we *workflowEntry, msg messaging.Messa
 
 type closeState struct{}
 
-func (s *closeState) execTransition(we *workflowEntry, msg messaging.Message) {
+func (s *closeState) execute(we *workflowEntry, msg messaging.Message) {
 	log.Debugf("closeState for %v", msg.Service.Name)
 	we.close(msg.Error)
 }

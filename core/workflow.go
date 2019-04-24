@@ -18,22 +18,21 @@ const (
 	undeployedState = "undeployed"
 )
 
-// workflow holds the sequence of "steps" an item must follow to be deployed or undeployed
-//type workflowSteps map[int]string
+// workflow holds the sequence of "steps" an item must follow to be deployed or un-deployed
 
 type workflowSteps []workflowStep
 
 type workflowStep struct {
 	ID         int
 	Name       string
-	Transition workflowState
+	Transition transition
 }
 
 // initialize the workflow from config
 func initWorkflow(workflowConfig string) {
 
 	for k, v := range strings.Split(workflowConfig, ",") {
-		var transitionState workflowState
+		var transitionState transition
 
 		extType := strings.Split(v, ".")[0]
 
@@ -89,7 +88,8 @@ func (w workflowSteps) isLastStep(step string, reverse bool) bool {
 	return true
 }
 
-func (w workflowSteps) getTransition(step string) workflowState {
+// getTransition for the given step
+func (w workflowSteps) getTransition(step string) transition {
 
 	for _, workflowStep := range w {
 		if workflowStep.Name == step {
@@ -99,9 +99,9 @@ func (w workflowSteps) getTransition(step string) workflowState {
 	return nil
 }
 
-// getNextStep returns the next step for a given step
-// set reverse to true to get next step when undeploying a service
-func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep string, next workflowState, err error) {
+// getNextStep returns the transition step for a given step
+// set reverse to true to get transition step when undeploying a service
+func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep string, next transition, err error) {
 	found := false
 	var stepID int
 
@@ -163,148 +163,151 @@ type workflowEntry struct {
 	LastUpdate time.Time         `json:"last_update,omitempty"`
 	Service    messaging.Service `json:"service,omitempty"`
 	CloseTime  time.Time         `json:"close_time"`
-	next       workflowState
+	transition transition
 }
 
-func makeNewFlowEntry(msg messaging.Message) *workflowEntry {
+func makeNewFlowEntry() *workflowEntry {
 	var ne workflowEntry
 	ne.TimeDetected = time.Now()
-	ne.State = msg.Sender
 	ne.State = undeployedState
 	ne.ExpectedState = deployedState
 	ne.setNextStep()
 	return &ne
 }
 
-func (we *workflowEntry) setError(err string) {
-	we.Lock()
-	we.Error = err
-	we.Unlock()
+func (e *workflowEntry) setError(err string) {
+	e.Lock()
+	e.Error = err
+	e.Unlock()
 }
 
-func (we *workflowEntry) setWIP(wip bool) {
-	we.Lock()
+func (e *workflowEntry) setWIP(wip bool) {
+	e.Lock()
 	if wip {
-		we.WIPTime = time.Now()
+		e.WIPTime = time.Now()
 	} else {
-		we.WIPTime = time.Time{}
+		e.WIPTime = time.Time{}
 	}
-	we.WorkInProgress = wip
-	we.Unlock()
+	e.WorkInProgress = wip
+	e.Unlock()
 }
 
-func (we *workflowEntry) setTargetState(state string) {
-	we.Lock()
-	we.ExpectedState = state
-	we.Unlock()
+func (e *workflowEntry) setTargetState(state string) {
+	e.Lock()
+	e.ExpectedState = state
+	e.Unlock()
 }
 
-func (we *workflowEntry) setLastUpdate() {
-	we.Lock()
-	we.LastUpdate = time.Now()
-	we.Unlock()
+// setLastUpdate to now()
+func (e *workflowEntry) setLastUpdate() {
+	e.Lock()
+	e.LastUpdate = time.Now()
+	e.Unlock()
 }
 
-func (we *workflowEntry) setTransition(state string) {
-	we.Lock()
-	we.next = workflow.getTransition(state)
-	we.Unlock()
+// setTransition based on given state
+func (e *workflowEntry) setTransition(state string) {
+	e.Lock()
+	e.transition = workflow.getTransition(state)
+	e.Unlock()
 }
 
-// setNextStep set the next workflow step of the entry
-func (we *workflowEntry) setNextStep() {
+// setNextStep in the workflow
+func (e *workflowEntry) setNextStep() {
 
-	nextStep, next, err := workflow.getNextStep(we.State, we.isReverse())
+	nextStep, next, err := workflow.getNextStep(e.State, e.isReverse())
 	if err != nil {
-		log.Errorf("Error getting next step for %v:%v", we.State, err)
+		log.Errorf("Error getting transition step for %v:%v", e.State, err)
 		return
 	}
-	log.Debugf("#### nextStep for %v is %v", we.State, nextStep)
-	we.Lock()
-	we.State = nextStep
-	we.next = next
-	we.WorkInProgress = false
-	we.WIPTime = time.Time{}
-	we.CloseTime = time.Time{}
-	we.Unlock()
+
+	log.Debugf("#### nextStep for %v is %v", e.State, nextStep)
+	e.Lock()
+	e.State = nextStep
+	e.transition = next
+	e.WorkInProgress = false
+	e.WIPTime = time.Time{}
+	e.CloseTime = time.Time{}
+	e.Unlock()
 
 }
 
 // setState update flow entry with info from message
-func (we *workflowEntry) setState(msg messaging.Message, wip bool) {
-	we.Lock()
-	we.State = msg.Sender
-	we.WorkInProgress = wip
-	we.Error = msg.Error
-	we.CloseTime = time.Time{}
-	we.Unlock()
+func (e *workflowEntry) setState(msg messaging.Message, wip bool) {
+	e.Lock()
+	e.State = msg.Sender
+	e.WorkInProgress = wip
+	e.Error = msg.Error
+	e.CloseTime = time.Time{}
+	e.Unlock()
 }
 
-// updateFromMsg update service with info coming from provider or ipam extensions only
-func (we *workflowEntry) updateServiceFromMsg(msg messaging.Message) {
-	we.Lock()
+// updateService from given message
+// only provider and ipam can update service definition
+func (e *workflowEntry) updateService(msg messaging.Message) {
+	e.Lock()
 	if strings.HasPrefix(msg.Sender, "provider.") && msg.Action != messaging.DeleteAction {
-		we.Service.Port = msg.Service.Port
-		we.Service.Hosts = msg.Service.Hosts
-		we.Service.TLS = msg.Service.TLS
-		we.Service.DNSAliases = msg.Service.DNSAliases
+		e.Service.Port = msg.Service.Port
+		e.Service.Hosts = msg.Service.Hosts
+		e.Service.TLS = msg.Service.TLS
+		e.Service.DNSAliases = msg.Service.DNSAliases
 	}
 
 	if strings.HasPrefix(msg.Sender, "ipam.") {
-		we.Service.PublicIP = msg.Service.PublicIP
+		e.Service.PublicIP = msg.Service.PublicIP
 	}
 
-	we.Service.Name = msg.Service.Name
-	we.Unlock()
+	e.Service.Name = msg.Service.Name
+	e.Unlock()
 }
 
-func (we *workflowEntry) sendToExtension() {
-	//we.setNextStep()
-	we.setWIP(true)
-	msg := messaging.BuildMessage(we.Service, we.isReverse())
-	msg.Destination = we.State
-	coreForwardMessage <- msg
+func (e *workflowEntry) sendToExtension() {
+	//e.setNextStep()
+	e.setWIP(true)
+	msg := messaging.BuildMessage(e.Service, e.isReverse())
+	msg.Destination = e.State
+	msgToExtension <- msg
 
 }
 
 // close closes the entry workflow
-func (we *workflowEntry) close(errorMessage string) {
+func (e *workflowEntry) close(errorMessage string) {
 
-	we.setWIP(false)
+	e.setWIP(false)
 
 	if errorMessage != "" {
-		we.setError(errorMessage)
+		e.setError(errorMessage)
 	}
 
-	we.Lock()
+	e.Lock()
 
-	if we.isReverse() {
-		we.State = undeployedState
+	if e.isReverse() {
+		e.State = undeployedState
 	} else {
-		we.State = deployedState
+		e.State = deployedState
 	}
 
-	we.CloseTime = time.Now()
+	e.CloseTime = time.Now()
 
-	we.Unlock()
+	e.Unlock()
 
-	log.Infof("Service %v state %v", we.Service.Name, we.State)
+	log.Infof("Service %v state %v", e.Service.Name, e.State)
 
 }
 
 // isReverse returns true if the target state is undeployed
-func (we *workflowEntry) isReverse() bool {
-	if we.ExpectedState == undeployedState {
+func (e *workflowEntry) isReverse() bool {
+	if e.ExpectedState == undeployedState {
 		return true
 	}
 	return false
 }
 
 // isStateAsWanted compares current state with expected state
-func (we *workflowEntry) isStateAsWanted(action string) bool {
-	if we.ExpectedState == we.State &&
-		((we.State == deployedState && action == messaging.AddAction) ||
-			(we.State == undeployedState && action == messaging.DeleteAction)) {
+func (e *workflowEntry) isStateAsWanted(action string) bool {
+	if e.ExpectedState == e.State &&
+		((e.State == deployedState && action == messaging.AddAction) ||
+			(e.State == undeployedState && action == messaging.DeleteAction)) {
 		log.Debug("service state is OK")
 		return true
 	}
@@ -327,7 +330,7 @@ func initWorkflowEntries(dbFile string) *workflowEntries {
 	return fe
 }
 
-func (we *workflowEntries) isServiceNeedUpdate(msg messaging.Message) bool {
+func (we *workflowEntries) serviceNeedUpdate(msg messaging.Message) bool {
 
 	curSvc, ok := we.Entries[msg.Service.Name]
 	if !ok {
@@ -348,9 +351,10 @@ func (we *workflowEntries) isServiceNeedUpdate(msg messaging.Message) bool {
 	return false
 }
 
-func (we *workflowEntries) messageHandler(msg messaging.Message) error {
+// mergeMessage by inserting/merging it to the workflow entries list
+func (we *workflowEntries) mergeMessage(msg messaging.Message) error {
 
-	if !we.isServiceNeedUpdate(msg) {
+	if !we.serviceNeedUpdate(msg) {
 		log.Debugf("Service %v already in desired state\n", msg.Service.Name)
 		we.Entries[msg.Service.Name].setLastUpdate()
 		return nil
@@ -361,46 +365,20 @@ func (we *workflowEntries) messageHandler(msg messaging.Message) error {
 
 	_, ok := we.Entries[msg.Service.Name]
 	if !ok {
-		log.Debugf("#### msgHandler service not found, creating it %v", msg)
-		we.Entries[msg.Service.Name] = makeNewFlowEntry(msg)
+		log.Debugf("Service not found, creating it %v", msg)
+		we.Entries[msg.Service.Name] = makeNewFlowEntry()
 	}
 
 	entry, _ := we.Entries[msg.Service.Name]
-	entry.updateServiceFromMsg(msg)
+	entry.updateService(msg)
 	entry.setTransition(msg.Sender)
 
-	go entry.next.execTransition(entry, msg)
+	go entry.transition.execute(entry, msg)
 
 	return nil
 }
 
-// closeEntry closes the entry workflow
-func (we *workflowEntries) closeEntry(serviceName, error string, reverse bool) {
-
-	_, ok := we.Entries[serviceName]
-	if !ok {
-		log.Errorf("Entry %v not found while trying to close it", serviceName)
-		return
-	}
-
-	we.Entries[serviceName].Lock()
-	we.Entries[serviceName].WorkInProgress = false
-	we.Entries[serviceName].WIPTime = time.Time{}
-	we.Entries[serviceName].CloseTime = time.Now()
-
-	if reverse {
-		we.Entries[serviceName].State = undeployedState
-	} else {
-		we.Entries[serviceName].State = deployedState
-	}
-
-	we.Entries[serviceName].Unlock()
-
-	log.Infof("Service %v state %v", serviceName, we.Entries[serviceName].State)
-
-}
-
-// save save entries list to file
+// save entries list to file
 func (we *workflowEntries) save() error {
 
 	dbFile, err := os.OpenFile(we.DBFile, os.O_RDWR|os.O_CREATE, 0644)
@@ -440,8 +418,8 @@ func (we *workflowEntries) save() error {
 	return nil
 }
 
-// loadFile load entries list from file
-func (we *workflowEntries) loadFile() error {
+// load entries list from file
+func (we *workflowEntries) load() error {
 	file, err := ioutil.ReadFile(we.DBFile)
 	if err != nil {
 		return err
