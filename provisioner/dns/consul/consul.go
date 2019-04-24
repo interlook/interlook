@@ -52,8 +52,8 @@ func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.M
 					if err := c.deregister(dnsAlias); err != nil {
 						msg.Error = err.Error()
 					}
-					send <- msg
 				}
+				send <- msg
 
 			default:
 				msg.Action = messaging.UpdateAction
