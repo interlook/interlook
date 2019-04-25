@@ -6,7 +6,6 @@ import (
 	"github.com/bhuisgen/interlook/provisioner/dns/consul"
 	"github.com/bhuisgen/interlook/provisioner/loadbalancer/f5ltm"
 	"github.com/bhuisgen/interlook/provisioner/loadbalancer/kemplm"
-	//"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"time"
@@ -26,16 +25,16 @@ const (
 // This includes all the providers and extensions
 type ServerConfiguration struct {
 	Core struct {
-		LogLevel                     string        `yaml:"logLevel"`
-		ListenPort                   int           `yaml:"listenPort"`
-		LogFile                      string        `yaml:"logFile"`
-		WorkflowSteps                string        `yaml:"workflowSteps"`
-		WorkflowEntriesFile          string        `yaml:"workflowEntriesFile"`
-		WorkflowControlInterval      time.Duration `yaml:"workflowControlInterval"`
-		WorkflowHousekeepingInterval time.Duration `yaml:"workflowHousekeepingInterval"`
-		ServiceWIPTimeout            time.Duration `yaml:"serviceWIPTimeout"`
-		ServiceMaxLastUpdated        time.Duration `yaml:"serviceMaxLastUpdated"`
-		CleanUndeployedServiceAfter  time.Duration `yaml:"cleanUndeployedServiceAfter"`
+		LogLevel                         string        `yaml:"logLevel"`
+		ListenPort                       int           `yaml:"listenPort"`
+		LogFile                          string        `yaml:"logFile"`
+		WorkflowSteps                    string        `yaml:"workflowSteps"`
+		WorkflowEntriesFile              string        `yaml:"workflowEntriesFile"`
+		WorkflowActivityLauncherInterval time.Duration `yaml:"workflowActivityLauncherInterval"`
+		WorkflowHousekeeperInterval      time.Duration `yaml:"workflowHousekeeperInterval"`
+		ServiceWIPTimeout                time.Duration `yaml:"serviceWIPTimeout"`
+		ServiceMaxLastUpdated            time.Duration `yaml:"serviceMaxLastUpdated"`
+		CleanUndeployedServiceAfter      time.Duration `yaml:"cleanUndeployedServiceAfter"`
 	} `yaml:"core"`
 	Provider struct {
 		Docker     *docker.Extension     `yaml:"docker"`

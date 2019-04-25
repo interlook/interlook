@@ -29,15 +29,15 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : stdout
-  # workflow: comma separated succession of extenstions
-  workflow: provider.swarm,ipam.ipalloc,lb.f5ltm
+  # workflowSteps: comma separated succession of extenstions
+  workflowSteps: provider.swarm,ipam.ipalloc,lb.f5ltm
   # where the workflow entries are saved
   workflowEntriesFile: ./share/flowentries.db
   # how often should the workflow controller run
-  workflowControlInterval: 3s
+  workflowActivityLauncherInterval: 3s
   # how often should the workflow housekeeper run
-  workflowHousekeepingInterval: 60s
-  # close the entry in error if work in progres for longer than
+  workflowHousekeeperInterval: 60s
+  # close the entry in error if work in progress for longer than
   serviceWIPTimeout: 90s
   # remove entries that have been closed for time
   cleanUndeployedServiceAfter: 10m
@@ -51,17 +51,14 @@ The other sections configure the `provider` and the `provisioners`. Each compone
 
 ```yaml
 provider:
-  docker:
-    name: myDocker
-    endpoint: tcp://docker.net:443
+  swarm:
+    endpoint: tcp://ucp.csnet.me:443
     labelSelector:
-      - interlook.host
-    tlsCa: path/to/ca
-    tlsCert: path/to/cert
-    tlsKey: path/to/key
-    Watch: true
-    WatchInterval: 10s
-    updateInterval: 15s
+      - l7aas
+    tlsCa: /path/to/ca.pem
+    tlsCert: /path/to/cert.pem
+    tlsKey: /path/to/key.pem
+    pollInterval: 5s
 ```
 
 * `ipam`
@@ -99,7 +96,7 @@ lb:
 
 Technically, providers and provisioners are all implementations of the Extension interface.
 
-![](./docs/interook-draw.png)
+![](./docs/interlook-draw.png)
 
 
 Currently supported Providers:

@@ -189,16 +189,17 @@ func (p *Provider) getServiceByName(svcName string) swarm.Service {
 
 	ctx := context.Background()
 
-	filter := filters.NewArgs()
-	filter.Add("name", svcName)
-
+	p.serviceFilters.Add("name", svcName)
 	services, err := p.cli.ServiceList(ctx, types.ServiceListOptions{
-		Filters: filter,
+		Filters: p.serviceFilters,
 	})
+	p.serviceFilters.Del("name", svcName)
+
 	if err != nil {
 		log.Errorf("Error getting service %v : %v", svcName, err)
 		return swarm.Service{}
 	}
+
 	if len(services) == 0 {
 		return swarm.Service{}
 	}

@@ -43,6 +43,7 @@ func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.M
 	for {
 		select {
 		case msg := <-receive:
+			log.Debugf("dns.consul got this message %v", msg)
 			switch msg.Action {
 			case messaging.DeleteAction:
 				log.Debugf("request to delete dns for %v", msg.Service.Name)
@@ -51,12 +52,13 @@ func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.M
 					if err := c.deregister(dnsAlias); err != nil {
 						msg.Error = err.Error()
 					}
-					send <- msg
 				}
+				send <- msg
 
 			default:
 				msg.Action = messaging.UpdateAction
 				var servicePort int
+				// FIXME: service public ports should be those used by the LB extension
 				if msg.Service.TLS {
 					servicePort = 443
 				} else {
@@ -64,14 +66,17 @@ func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.M
 				}
 				for _, dnsAlias := range msg.Service.DNSAliases {
 					alreadyRegistered, err := c.isServiceExist(dnsAlias)
+
 					if err != nil {
 						log.Errorf("error %v getting current dns definition for %v", err.Error(), dnsAlias)
 					}
+
 					if alreadyRegistered {
 						if err := c.deregister(dnsAlias); err != nil {
-							log.Errorf("Error deregistering %v: %v", dnsAlias, err.Error())
+							log.Errorf("Error de-registering %v: %v", dnsAlias, err.Error())
 						}
 					}
+
 					registration := api.CatalogRegistration{
 						Node:     dnsAlias,
 						Address:  msg.Service.PublicIP,
@@ -96,9 +101,8 @@ func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.M
 						send <- msg
 						continue
 					}
-					send <- msg
 				}
-
+				send <- msg
 			}
 		case <-c.shutdown:
 			return nil

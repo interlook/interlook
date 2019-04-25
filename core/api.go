@@ -47,8 +47,8 @@ func (s *server) getServices(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) getWorkflow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-
-	err := json.NewEncoder(w).Encode(s.workflow)
+	// TODO: custom parser for better presentation
+	err := json.NewEncoder(w).Encode(workflow)
 	if err != nil {
 		log.Errorf("Error encoding JSON response %v", err)
 	}
