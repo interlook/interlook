@@ -2,18 +2,18 @@ package swarm
 
 // TODO: which auth to engine should we support. Currently tls implemented
 import (
-	"github.com/bhuisgen/interlook/messaging"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/go-connections/nat"
+	"github.com/interlook/interlook/messaging"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/bhuisgen/interlook/log"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/interlook/interlook/log"
 	"golang.org/x/net/context"
 )
 

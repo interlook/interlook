@@ -3,10 +3,10 @@ package core
 import (
 	"flag"
 	"fmt"
-	"github.com/bhuisgen/interlook/config"
-	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/messaging"
 	"github.com/fatih/structs"
+	"github.com/interlook/interlook/config"
+	"github.com/interlook/interlook/log"
+	"github.com/interlook/interlook/messaging"
 	"github.com/pkg/errors"
 	"net/http"
 	"reflect"

@@ -1,10 +1,10 @@
 package docker
 
 import (
-	"github.com/bhuisgen/interlook/messaging"
+	"github.com/interlook/interlook/messaging"
 	"time"
 
-	"github.com/bhuisgen/interlook/log"
+	"github.com/interlook/interlook/log"
 )
 
 // Extension holds the provider ipalloc configuration

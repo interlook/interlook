@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/bhuisgen/interlook/log"
+	"github.com/interlook/interlook/log"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"

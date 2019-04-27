@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/bhuisgen/interlook/core"
+	"github.com/interlook/interlook/core"
 )
 
 func main() {

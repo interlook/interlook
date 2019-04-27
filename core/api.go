@@ -3,7 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"github.com/bhuisgen/interlook/log"
+	"github.com/interlook/interlook/log"
 	"net/http"
 	"strconv"
 )

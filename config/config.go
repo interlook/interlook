@@ -2,18 +2,18 @@ package config
 
 import (
 	"fmt"
-	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/provisioner/dns/consul"
-	"github.com/bhuisgen/interlook/provisioner/loadbalancer/f5ltm"
-	"github.com/bhuisgen/interlook/provisioner/loadbalancer/kemplm"
+	"github.com/interlook/interlook/log"
+	"github.com/interlook/interlook/provisioner/dns/consul"
+	"github.com/interlook/interlook/provisioner/loadbalancer/f5ltm"
+	"github.com/interlook/interlook/provisioner/loadbalancer/kemplm"
 	"io/ioutil"
 	"os"
 	"time"
 
-	"github.com/bhuisgen/interlook/provider/docker"
-	"github.com/bhuisgen/interlook/provider/kubernetes"
-	"github.com/bhuisgen/interlook/provider/swarm"
-	"github.com/bhuisgen/interlook/provisioner/ipam/ipalloc"
+	"github.com/interlook/interlook/provider/docker"
+	"github.com/interlook/interlook/provider/kubernetes"
+	"github.com/interlook/interlook/provider/swarm"
+	"github.com/interlook/interlook/provisioner/ipam/ipalloc"
 	"gopkg.in/yaml.v3"
 )
 

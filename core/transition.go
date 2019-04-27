@@ -2,8 +2,8 @@ package core
 
 import (
 	"fmt"
-	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/messaging"
+	"github.com/interlook/interlook/log"
+	"github.com/interlook/interlook/messaging"
 	"strings"
 )
 

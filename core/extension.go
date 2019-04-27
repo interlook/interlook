@@ -1,6 +1,6 @@
 package core
 
-import "github.com/bhuisgen/interlook/messaging"
+import "github.com/interlook/interlook/messaging"
 
 // Extension describe basic extension behaviour
 type Extension interface {

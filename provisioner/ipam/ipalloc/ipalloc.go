@@ -3,8 +3,8 @@ package ipalloc
 import (
 	"encoding/json"
 	"errors"
-	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/messaging"
+	"github.com/interlook/interlook/log"
+	"github.com/interlook/interlook/messaging"
 	"io/ioutil"
 	"net"
 	"strings"

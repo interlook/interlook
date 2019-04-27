@@ -2,9 +2,9 @@
 package consul
 
 import (
-	"github.com/bhuisgen/interlook/log"
-	"github.com/bhuisgen/interlook/messaging"
 	"github.com/hashicorp/consul/api"
+	"github.com/interlook/interlook/log"
+	"github.com/interlook/interlook/messaging"
 )
 
 type Consul struct {
