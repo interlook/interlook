@@ -1,4 +1,4 @@
-# WORKFLOW
+# Workflow
 
 This doc describes the interlook workflow by explaining a basic example.
 

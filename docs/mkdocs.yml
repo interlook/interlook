@@ -1,0 +1,11 @@
+site_name: Interlook
+nav:
+    - Home: index.md
+    - Concept: concept.md
+    - Configuration: configuration.md
+    - Architecture: architecture.md
+    - Extensions: extensions.md
+    - Workflow: workflow.md
+    - Extend Interlook: extension.md
+
+theme: material
