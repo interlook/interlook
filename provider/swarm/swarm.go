@@ -4,7 +4,7 @@ package swarm
 import (
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/go-connections/nat"
-	"github.com/interlook/interlook/messaging"
+	"github.com/interlook/interlook/comm"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,7 +34,7 @@ type Provider struct {
 	PollInterval     time.Duration `yaml:"pollInterval"`
 	pollTicker       *time.Ticker
 	shutdown         chan bool
-	send             chan<- messaging.Message
+	send             chan<- comm.Message
 	services         []string
 	servicesLock     sync.RWMutex
 	cli              *client.Client
@@ -76,7 +76,7 @@ func (p *Provider) init() error {
 	return nil
 }
 
-func (p *Provider) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
+func (p *Provider) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 
 	p.send = send
 
@@ -99,7 +99,7 @@ func (p *Provider) Start(receive <-chan messaging.Message, send chan<- messaging
 		case msg := <-receive:
 			log.Debugf("Received message from core: %v on %v", msg.Action, msg.Service.Name)
 			switch msg.Action {
-			case messaging.RefreshAction:
+			case comm.RefreshAction:
 				log.Debugf("Request to refresh service %v", msg.Service.Name)
 				p.RefreshService(msg)
 			default:
@@ -152,7 +152,7 @@ func (p *Provider) poll() {
 	}
 }
 
-func (p *Provider) RefreshService(msg messaging.Message) {
+func (p *Provider) RefreshService(msg comm.Message) {
 
 	service := p.getServiceByName(msg.Service.Name)
 
@@ -223,7 +223,7 @@ func (p *Provider) getContainersByService(svcName string) ([]types.Container, er
 	return ctList, nil
 }
 
-func (p *Provider) buildMessageFromService(service swarm.Service) (messaging.Message, error) {
+func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message, error) {
 
 	ctx := context.Background()
 
@@ -234,9 +234,9 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (messaging.Mes
 		log.Error(err)
 	}
 
-	msg := messaging.Message{
-		Action: messaging.AddAction,
-		Service: messaging.Service{
+	msg := comm.Message{
+		Action: comm.AddAction,
+		Service: comm.Service{
 			Name:       service.Spec.Name,
 			Provider:   extensionName,
 			DNSAliases: strings.Split(service.Spec.Labels[hostsLabel], ","),
@@ -272,10 +272,10 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (messaging.Mes
 	return msg, nil
 }
 
-func (p *Provider) buildDeleteMessage(svcName string) messaging.Message {
-	msg := messaging.Message{
-		Action: messaging.DeleteAction,
-		Service: messaging.Service{
+func (p *Provider) buildDeleteMessage(svcName string) comm.Message {
+	msg := comm.Message{
+		Action: comm.DeleteAction,
+		Service: comm.Service{
 			Name: svcName,
 		}}
 

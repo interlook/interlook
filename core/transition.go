@@ -2,28 +2,28 @@ package core
 
 import (
 	"fmt"
+	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
-	"github.com/interlook/interlook/messaging"
 	"strings"
 )
 
 type transition interface {
-	execute(*workflowEntry, messaging.Message)
+	execute(*workflowEntry, comm.Message)
 }
 
 type providerState struct{}
 
-func (s *providerState) execute(we *workflowEntry, msg messaging.Message) {
+func (s *providerState) execute(we *workflowEntry, msg comm.Message) {
 
 	switch msg.Action {
-	case messaging.AddAction:
+	case comm.AddAction:
 		we.setLastUpdate()
 		we.setTargetState(deployedState)
 		we.Lock()
 		we.transition = &providerAddState{}
 		we.Unlock()
 		we.setState(msg, false)
-	case messaging.DeleteAction:
+	case comm.DeleteAction:
 		we.transition = &providerDeleteState{}
 	default:
 		logMsg := fmt.Sprintf("Unhandled action %v", msg.Action)
@@ -37,9 +37,9 @@ func (s *providerState) execute(we *workflowEntry, msg messaging.Message) {
 
 type providerAddState struct{}
 
-func (s *providerAddState) execute(we *workflowEntry, msg messaging.Message) {
+func (s *providerAddState) execute(we *workflowEntry, msg comm.Message) {
 	log.Debugf("ProviderAddState got msg %v", msg)
-	if msg.Action != messaging.AddAction || !strings.HasPrefix(msg.Sender, "provider.") {
+	if msg.Action != comm.AddAction || !strings.HasPrefix(msg.Sender, "provider.") {
 		logMsg := fmt.Sprintf("%v action not allowed from %v in state %v %v", msg.Action, msg.Sender, we.State, we.Service.Name)
 		log.Warn(logMsg)
 		return
@@ -57,8 +57,8 @@ func (s *providerAddState) execute(we *workflowEntry, msg messaging.Message) {
 
 type providerDeleteState struct{}
 
-func (s *providerDeleteState) execute(we *workflowEntry, msg messaging.Message) {
-	if msg.Action != messaging.DeleteAction || !strings.HasPrefix(msg.Sender, "provider.") {
+func (s *providerDeleteState) execute(we *workflowEntry, msg comm.Message) {
+	if msg.Action != comm.DeleteAction || !strings.HasPrefix(msg.Sender, "provider.") {
 		logMsg := fmt.Sprintf("%v action not allowed in state %v %v", msg.Action, we.State, we.Service.Name)
 		log.Warn(logMsg)
 		return
@@ -79,7 +79,7 @@ func (s *providerDeleteState) execute(we *workflowEntry, msg messaging.Message) 
 
 type provisionerState struct{}
 
-func (s *provisionerState) execute(we *workflowEntry, msg messaging.Message) {
+func (s *provisionerState) execute(we *workflowEntry, msg comm.Message) {
 	log.Debugf("ProvisionerState got msg %v", msg)
 
 	// if wip, we expect an update from extension (meaning through message)
@@ -120,7 +120,7 @@ func (s *provisionerState) execute(we *workflowEntry, msg messaging.Message) {
 
 type closeState struct{}
 
-func (s *closeState) execute(we *workflowEntry, msg messaging.Message) {
+func (s *closeState) execute(we *workflowEntry, msg comm.Message) {
 	log.Debugf("closeState for %v", msg.Service.Name)
 	we.close(msg.Error)
 }

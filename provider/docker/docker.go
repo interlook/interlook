@@ -1,7 +1,7 @@
 package docker
 
 import (
-	"github.com/interlook/interlook/messaging"
+	"github.com/interlook/interlook/comm"
 	"time"
 
 	"github.com/interlook/interlook/log"
@@ -19,8 +19,8 @@ type Extension struct {
 	WatchInterval  string   `yaml:"watchInterval"`
 	UpdateInterval string   `yaml:"updateInterval"`
 	close          chan bool
-	receive        <-chan messaging.Message
-	send           chan<- messaging.Message
+	receive        <-chan comm.Message
+	send           chan<- comm.Message
 }
 
 func (p *Extension) RefreshService(serviceName string) {
@@ -30,12 +30,12 @@ func (p *Extension) RefreshService(serviceName string) {
 }
 
 // Start initialize and start sending events to core
-func (p *Extension) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
+func (p *Extension) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 	p.close = make(chan bool)
 	p.receive = receive
 	p.send = send
 	log.Infof("Starting %v on %v\n", p.Name, p.Endpoint)
-	var msg messaging.Message
+	var msg comm.Message
 	msg.Action = "add" // add, remove, update, check
 	msg.Service.Provider = "docker"
 	msg.Service.Hosts = append(msg.Service.Hosts, "10.32.2.42", "10.32.2.46")

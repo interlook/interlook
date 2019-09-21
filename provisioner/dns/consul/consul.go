@@ -3,8 +3,8 @@ package consul
 
 import (
 	"github.com/hashicorp/consul/api"
+	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
-	"github.com/interlook/interlook/messaging"
 )
 
 type Consul struct {
@@ -34,7 +34,7 @@ func (c *Consul) init() error {
 	return nil
 }
 
-func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
+func (c *Consul) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 
 	if err := c.init(); err != nil {
 		return err
@@ -45,9 +45,9 @@ func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.M
 		case msg := <-receive:
 			log.Debugf("dns.consul got this message %v", msg)
 			switch msg.Action {
-			case messaging.DeleteAction:
+			case comm.DeleteAction:
 				log.Debugf("request to delete dns for %v", msg.Service.Name)
-				msg.Action = messaging.UpdateAction
+				msg.Action = comm.UpdateAction
 				for _, dnsAlias := range msg.Service.DNSAliases {
 					if err := c.deregister(dnsAlias); err != nil {
 						msg.Error = err.Error()
@@ -56,7 +56,7 @@ func (c *Consul) Start(receive <-chan messaging.Message, send chan<- messaging.M
 				send <- msg
 
 			default:
-				msg.Action = messaging.UpdateAction
+				msg.Action = comm.UpdateAction
 				var servicePort int
 				// FIXME: service public ports should be those used by the LB extension
 				if msg.Service.TLS {

@@ -24,8 +24,17 @@ Then it ensures the relevant tasks are performed by the different "provisioners"
 
 Boris HUISGEN <bhuisgen@hbis.fr>
 
-Michael CHAMPAGNE <mch1307@gmail.com>
+Michael CHAMPAGNE <mch1307@gmail.com> 
 
 ## Contributing
 
 [Contributing guide](.github/CONTRIBUTING.md)
+
+## Build
+
+``bash
+VERSION=$(git log -n1 --pretty="format:%d" | sed "s/, /\n/g" | grep tag: | sed "s/tag: \|)//g") && \
+VERSION=$VERSION-$(git log -1 --pretty=format:%h) && \
+CGO_ENABLED="0" GOARCH="amd64" GOOS="linux" go build -a -installsuffix cgo -o interlook -ldflags="-s -w -X github.com/interlook/interlook/core=$VERSION"
+```
+

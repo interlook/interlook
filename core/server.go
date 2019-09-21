@@ -4,9 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/fatih/structs"
+	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/config"
 	"github.com/interlook/interlook/log"
-	"github.com/interlook/interlook/messaging"
 	"github.com/pkg/errors"
 	"net/http"
 	"reflect"
@@ -23,7 +23,7 @@ var (
 	configFile     string
 	Version        = "dev"
 	workflow       workflowSteps
-	msgToExtension chan messaging.Message
+	msgToExtension chan comm.Message
 )
 
 // holds Interlook server config
@@ -73,7 +73,7 @@ func initServer() (server, error) {
 	s.housekeeperShutdown = make(chan bool)
 	s.housekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeeperInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
-	msgToExtension = make(chan messaging.Message)
+	msgToExtension = make(chan comm.Message)
 
 	// init workflow
 	initWorkflow(s.config.Core.WorkflowSteps)
@@ -251,9 +251,9 @@ func (s *server) refreshService(serviceName string) error {
 
 		_, ok := extension.(Provider)
 		if ok {
-			msg := messaging.Message{
-				Action: messaging.RefreshAction,
-				Service: messaging.Service{
+			msg := comm.Message{
+				Action: comm.RefreshAction,
+				Service: comm.Service{
 					Name: serviceName,
 				},
 			}
@@ -273,7 +273,7 @@ func (s *server) messageSender() {
 	}
 }
 
-func (s *server) sendMessageToExtension(msg messaging.Message, extensionName string) {
+func (s *server) sendMessageToExtension(msg comm.Message, extensionName string) {
 	// get the extension channel to write message to
 	ext, ok := s.extensionChannels[extensionName]
 	if !ok {
@@ -287,15 +287,15 @@ func (s *server) sendMessageToExtension(msg messaging.Message, extensionName str
 // extensionChannels holds the "activated" extensions's channels
 type extensionChannels struct {
 	name    string
-	receive chan messaging.Message
-	send    chan messaging.Message
+	receive chan comm.Message
+	send    chan comm.Message
 }
 
 func newExtensionChannels(name string) *extensionChannels {
 	p := new(extensionChannels)
 	p.name = name
-	p.send = make(chan messaging.Message)
-	p.receive = make(chan messaging.Message)
+	p.send = make(chan comm.Message)
+	p.receive = make(chan comm.Message)
 
 	return p
 }

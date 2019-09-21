@@ -4,8 +4,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
-	"github.com/interlook/interlook/messaging"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -34,7 +34,7 @@ func (k *KempLM) initialize() {
 
 }
 
-func (k *KempLM) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
+func (k *KempLM) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 	k.initialize()
 
 	if err := k.testConnection(); err != nil {
@@ -50,8 +50,8 @@ func (k *KempLM) Start(receive <-chan messaging.Message, send chan<- messaging.M
 		case msg := <-receive:
 			log.Debugf("Extension kemplm received a message")
 			switch msg.Action {
-			case messaging.AddAction:
-				msg.Action = messaging.UpdateAction
+			case comm.AddAction:
+				msg.Action = comm.UpdateAction
 
 				if err := k.addVS(msg); err != nil {
 					log.Debugf("error %v in addVS", err.Error())
@@ -69,14 +69,14 @@ func (k *KempLM) Start(receive <-chan messaging.Message, send chan<- messaging.M
 				}
 				send <- msg
 
-			case messaging.UpdateAction:
+			case comm.UpdateAction:
 				// check if rs and or vs needs to be updated
 				// delete vs
 				// create vs and rs
 				send <- msg
 
-			case messaging.DeleteAction:
-				msg.Action = messaging.UpdateAction
+			case comm.DeleteAction:
+				msg.Action = comm.UpdateAction
 
 				exist, err := k.isVSDefined(msg)
 				if err != nil {
@@ -118,7 +118,7 @@ func (k *KempLM) testConnection() error {
 	return nil
 }
 
-func (k *KempLM) deleteVS(msg messaging.Message) error {
+func (k *KempLM) deleteVS(msg comm.Message) error {
 	req, err := k.newVSRequest("/access/delvs", msg)
 	if err != nil {
 		return err
@@ -136,7 +136,7 @@ func (k *KempLM) deleteVS(msg messaging.Message) error {
 	return nil
 }
 
-func (k *KempLM) isRSDefined(msg messaging.Message, host string) (bool, error) {
+func (k *KempLM) isRSDefined(msg comm.Message, host string) (bool, error) {
 	req, err := k.newVSRequest("/access/showrs", msg)
 	if err != nil {
 		return false, err
@@ -158,7 +158,7 @@ func (k *KempLM) isRSDefined(msg messaging.Message, host string) (bool, error) {
 	return false, nil
 }
 
-func (k *KempLM) isVSDefined(msg messaging.Message) (bool, error) {
+func (k *KempLM) isVSDefined(msg comm.Message) (bool, error) {
 	req, err := k.newVSRequest("/access/showvs", msg)
 	if err != nil {
 		return false, err
@@ -181,7 +181,7 @@ func (k *KempLM) isVSDefined(msg messaging.Message) (bool, error) {
 	}
 }
 
-func (k *KempLM) addVS(msg messaging.Message) error {
+func (k *KempLM) addVS(msg comm.Message) error {
 
 	exist, err := k.isVSDefined(msg)
 	if err != nil {
@@ -210,7 +210,7 @@ func (k *KempLM) addVS(msg messaging.Message) error {
 	return nil
 }
 
-func (k *KempLM) addRS(msg messaging.Message) error {
+func (k *KempLM) addRS(msg comm.Message) error {
 	for _, host := range msg.Service.Hosts {
 		rsExists, _ := k.isRSDefined(msg, host)
 
@@ -274,7 +274,7 @@ func (k *KempLM) newAuthRequest(method, url string) (*http.Request, error) {
 	return req, nil
 }
 
-func (k *KempLM) newVSRequest(path string, msg messaging.Message) (*http.Request, error) {
+func (k *KempLM) newVSRequest(path string, msg comm.Message) (*http.Request, error) {
 	req, err := k.newAuthRequest(http.MethodGet, k.Endpoint+path)
 	if err != nil {
 		return req, err

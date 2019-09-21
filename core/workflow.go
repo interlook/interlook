@@ -1,11 +1,10 @@
 package core
 
-// TODO: Add management of flows in error
 import (
 	"encoding/json"
 	"errors"
+	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
-	"github.com/interlook/interlook/messaging"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -160,9 +159,9 @@ type workflowEntry struct {
 	// First time the service was pushed by the provider
 	TimeDetected time.Time `json:"time_detected,omitempty"`
 	// Last time provider pushed an updated definition of the service
-	LastUpdate time.Time         `json:"last_update,omitempty"`
-	Service    messaging.Service `json:"service,omitempty"`
-	CloseTime  time.Time         `json:"close_time"`
+	LastUpdate time.Time    `json:"last_update,omitempty"`
+	Service    comm.Service `json:"service,omitempty"`
+	CloseTime  time.Time    `json:"close_time"`
 	transition transition
 }
 
@@ -233,7 +232,7 @@ func (e *workflowEntry) setNextStep() {
 }
 
 // setState update flow entry with info from message
-func (e *workflowEntry) setState(msg messaging.Message, wip bool) {
+func (e *workflowEntry) setState(msg comm.Message, wip bool) {
 	e.Lock()
 	e.State = msg.Sender
 	e.WorkInProgress = wip
@@ -244,9 +243,9 @@ func (e *workflowEntry) setState(msg messaging.Message, wip bool) {
 
 // updateService from given message
 // only provider and ipam can update service definition
-func (e *workflowEntry) updateService(msg messaging.Message) {
+func (e *workflowEntry) updateService(msg comm.Message) {
 	e.Lock()
-	if strings.HasPrefix(msg.Sender, "provider.") && msg.Action != messaging.DeleteAction {
+	if strings.HasPrefix(msg.Sender, "provider.") && msg.Action != comm.DeleteAction {
 		e.Service.Port = msg.Service.Port
 		e.Service.Hosts = msg.Service.Hosts
 		e.Service.TLS = msg.Service.TLS
@@ -264,7 +263,7 @@ func (e *workflowEntry) updateService(msg messaging.Message) {
 func (e *workflowEntry) sendToExtension() {
 	//e.setNextStep()
 	e.setWIP(true)
-	msg := messaging.BuildMessage(e.Service, e.isReverse())
+	msg := comm.BuildMessage(e.Service, e.isReverse())
 	msg.Destination = e.State
 	msgToExtension <- msg
 
@@ -306,8 +305,8 @@ func (e *workflowEntry) isReverse() bool {
 // isStateAsWanted compares current state with expected state
 func (e *workflowEntry) isStateAsWanted(action string) bool {
 	if e.ExpectedState == e.State &&
-		((e.State == deployedState && action == messaging.AddAction) ||
-			(e.State == undeployedState && action == messaging.DeleteAction)) {
+		((e.State == deployedState && action == comm.AddAction) ||
+			(e.State == undeployedState && action == comm.DeleteAction)) {
 		log.Debug("service state is OK")
 		return true
 	}
@@ -330,7 +329,7 @@ func initWorkflowEntries(dbFile string) *workflowEntries {
 	return fe
 }
 
-func (we *workflowEntries) serviceNeedUpdate(msg messaging.Message) bool {
+func (we *workflowEntries) serviceNeedUpdate(msg comm.Message) bool {
 
 	curSvc, ok := we.Entries[msg.Service.Name]
 	if !ok {
@@ -352,7 +351,7 @@ func (we *workflowEntries) serviceNeedUpdate(msg messaging.Message) bool {
 }
 
 // mergeMessage by inserting/merging it to the workflow entries list
-func (we *workflowEntries) mergeMessage(msg messaging.Message) error {
+func (we *workflowEntries) mergeMessage(msg comm.Message) error {
 
 	if !we.serviceNeedUpdate(msg) {
 		log.Debugf("Service %v already in desired state\n", msg.Service.Name)

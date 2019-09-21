@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
-	"github.com/interlook/interlook/messaging"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
@@ -37,7 +37,7 @@ type BigIP struct {
 	Partition         string `yaml:"partition"`
 	httpClient        *http.Client
 	shutdown          chan bool
-	send              chan<- messaging.Message
+	send              chan<- comm.Message
 	wg                sync.WaitGroup
 }
 
@@ -62,7 +62,7 @@ func (b *BigIP) initialize() {
 }
 
 //Start initialize extension and starts listening for messages from core
-func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Message) error {
+func (b *BigIP) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 	b.initialize()
 	b.send = send
 
@@ -83,8 +83,8 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 			log.Debugf("BigIP f5ltm received a message %v", msg)
 
 			switch msg.Action {
-			case messaging.AddAction, messaging.UpdateAction:
-				msg.Action = messaging.UpdateAction
+			case comm.AddAction, comm.UpdateAction:
+				msg.Action = comm.UpdateAction
 				// check if virtual server already vsExist
 				vsExist := true
 				currentVirtual, err := b.getVirtualServerByName(msg.Service.Name)
@@ -142,9 +142,9 @@ func (b *BigIP) Start(receive <-chan messaging.Message, send chan<- messaging.Me
 				b.send <- msg
 				b.wg.Done()
 
-			case messaging.DeleteAction:
+			case comm.DeleteAction:
 
-				msg.Action = messaging.UpdateAction
+				msg.Action = comm.UpdateAction
 				vsExist, err := b.isResourceExists(msg.Service.Name, "virtual")
 				if err != nil {
 					msg.Error = err.Error()
@@ -218,7 +218,7 @@ func (b *BigIP) getVirtualServerByName(name string) (vs virtualServerResponse, e
 }
 
 // createVirtualServer created a virtual server from a service
-func (b *BigIP) createVirtualServer(msg messaging.Message) error {
+func (b *BigIP) createVirtualServer(msg comm.Message) error {
 
 	vs := virtualServer{
 		Name:        b.addPartitionToPath(msg.Service.Name),
@@ -280,7 +280,7 @@ func (b *BigIP) updateVirtualServerIPDestination(vs virtualServerResponse, ip, p
 	return nil
 }
 
-func (b *BigIP) deleteVirtualServer(msg messaging.Message) error {
+func (b *BigIP) deleteVirtualServer(msg comm.Message) error {
 
 	var deletePayload deleteResourcePayload
 	deletePayload.Partition = b.Partition
@@ -343,7 +343,7 @@ func (b *BigIP) getPoolMembers(poolName string) (members []string, port int, err
 }
 
 // createPool creates the pool with information from the message
-func (b *BigIP) createPool(msg messaging.Message) error {
+func (b *BigIP) createPool(msg comm.Message) error {
 
 	pool := b.getPoolFromService(msg)
 
@@ -369,7 +369,7 @@ func (b *BigIP) createPool(msg messaging.Message) error {
 }
 
 // updatePoolMembers replace the members of the pool with the ones from the message
-func (b *BigIP) updatePoolMembers(msg messaging.Message) error {
+func (b *BigIP) updatePoolMembers(msg comm.Message) error {
 
 	newPoolMembers := poolMembers{}
 	members := make([]member, 0)
@@ -403,7 +403,7 @@ func (b *BigIP) updatePoolMembers(msg messaging.Message) error {
 }
 
 // deletePool deletes the pool from f5
-func (b *BigIP) deletePool(msg messaging.Message) error {
+func (b *BigIP) deletePool(msg comm.Message) error {
 
 	var deletePayload deleteResourcePayload
 	deletePayload.Partition = b.Partition
@@ -493,7 +493,7 @@ func (b *BigIP) executeRequest(r *http.Request) (responseBody []byte, httpCode i
 	return body, res.StatusCode, nil
 }
 
-func (b *BigIP) getLBPort(msg messaging.Message) int {
+func (b *BigIP) getLBPort(msg comm.Message) int {
 	if !msg.Service.TLS {
 		return b.HttpPort
 	}
@@ -600,7 +600,7 @@ func (b *BigIP) addPartitionToName(name string) (fullName string) {
 }
 
 // getPoolFromService returns a pool (name, hosts and port) from a Service
-func (b *BigIP) getPoolFromService(msg messaging.Message) pool {
+func (b *BigIP) getPoolFromService(msg comm.Message) pool {
 
 	var hosts []string
 

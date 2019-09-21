@@ -37,7 +37,7 @@ func (r *request) execute() (body []byte, httpCode int, err error) {
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
-		return body, res.StatusCode, err
+		return body, res.StatusCode, readErr
 	}
 
 	return body, res.StatusCode, nil
