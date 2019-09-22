@@ -2,9 +2,10 @@ package swarm
 
 // TODO: which auth to engine should we support. Currently tls implemented
 import (
+	"fmt"
 	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/go-connections/nat"
 	"github.com/interlook/interlook/comm"
+	"github.com/pkg/errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,7 +133,7 @@ func (p *Provider) poll() {
 	}
 
 	for _, service := range data {
-
+		log.Debugf("Swarm service: %v", service)
 		msg, err := p.buildMessageFromService(service)
 		log.Debugf("swarm message %v", msg)
 		if err != nil {
@@ -229,11 +230,6 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message,
 
 	tlsService, _ := strconv.ParseBool(service.Spec.Labels[sslLabel])
 
-	targetPort, err := nat.NewPort("tcp", service.Spec.Labels[portLabel])
-	if err != nil {
-		log.Error(err)
-	}
-
 	msg := comm.Message{
 		Action: comm.AddAction,
 		Service: comm.Service{
@@ -243,8 +239,27 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message,
 			TLS:        tlsService,
 		}}
 
-	// TODO: check if restrict to swarm.PortConfigPublishModeHost, swarm.PortConfigPublishModeIngress ?
+	targetPort, err := strconv.Atoi(service.Spec.Labels[portLabel])
+	if err != nil {
+		return msg, errors.New(fmt.Sprintf("Error converting %v to int (%v). Is %v correctly specified?", service.Spec.Labels[portLabel], err.Error(), portLabel))
+	}
+	/*    targetPort, err := nat.NewPort("tcp", service.Spec.Labels[portLabel])
+	      if err != nil {
+	          log.Error(err)
+	      }*/
 
+	// TODO: check if shoud control publishMode (swarm.PortConfigPublishModeHost, swarm.PortConfigPublishModeIngress)
+	// get ports published through service.Endpoint.Ports
+	ports := service.Endpoint.Ports
+	for _, port := range ports {
+		if int(port.TargetPort) == targetPort {
+			//msg.Service.Hosts = append(msg.Service.Hosts, )
+			log.Debugf("PublishedPort: %v through %v", port.PublishedPort, port.PublishMode)
+			msg.Service.Port = int(port.PublishedPort)
+		}
+	}
+
+	// get hosts running service container
 	containers, err := p.getContainersByService(service.Spec.Name)
 	if err != nil {
 		return msg, err
@@ -256,17 +271,22 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message,
 			log.Error(err)
 			continue
 		}
+		// get container node IP addr containerDetails.Node.IPAddress
+		msg.Service.Hosts = append(msg.Service.Hosts, containerDetails.Node.IPAddress)
+		log.Debugf("container details : %v", containerDetails.Node.IPAddress)
 
-		portSettings := containerDetails.NetworkSettings.Ports
-		for _, val := range portSettings[targetPort] {
-			if val.HostIP != "" {
-				msg.Service.Hosts = append(msg.Service.Hosts, val.HostIP)
-				msg.Service.Port, err = strconv.Atoi(val.HostPort)
-				if err != nil {
-					log.Error(err)
-				}
-			}
-		}
+		/*        portSettings := containerDetails.NetworkSettings.Ports
+		          for _, val := range portSettings[targetPort] {
+		              log.Debugf("host ip: %v", val.HostIP)
+		              if val.HostIP != "" {
+		                  log.Debugf("host port: %v", val.HostPort)
+		                  msg.Service.Hosts = append(msg.Service.Hosts, val.HostIP)
+		                  msg.Service.Port, err = strconv.Atoi(val.HostPort)
+		                  if err != nil {
+		                      log.Error(err)
+		                  }
+		              }
+		          }*/
 	}
 
 	return msg, nil
