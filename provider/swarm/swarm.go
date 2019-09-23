@@ -2,120 +2,121 @@ package swarm
 
 // TODO: which auth to engine should we support. Currently tls implemented
 import (
-	"fmt"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/interlook/interlook/comm"
-	"github.com/pkg/errors"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
+    "fmt"
+    "github.com/docker/docker/api/types/swarm"
+    "github.com/interlook/interlook/comm"
+    "github.com/pkg/errors"
+    "strconv"
+    "strings"
+    "sync"
+    "time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
-	"github.com/interlook/interlook/log"
-	"golang.org/x/net/context"
+    "github.com/docker/docker/api/types"
+    "github.com/docker/docker/api/types/filters"
+    "github.com/docker/docker/client"
+    "github.com/interlook/interlook/log"
+    "golang.org/x/net/context"
 )
 
 const (
-	hostsLabel    = "interlook.hosts"
-	portLabel     = "interlook.port"
-	sslLabel      = "interlook.ssl"
-	extensionName = "provider.swarm"
+    hostsLabel    = "interlook.hosts"
+    portLabel     = "interlook.port"
+    sslLabel      = "interlook.ssl"
+    extensionName = "provider.swarm"
+    runningState  = "running"
 )
 
 // Provider holds the provider configuration
 type Provider struct {
-	Endpoint         string        `yaml:"endpoint"`
-	LabelSelector    []string      `yaml:"labelSelector"`
-	TLSCa            string        `yaml:"tlsCa"`
-	TLSCert          string        `yaml:"tlsCert"`
-	TLSKey           string        `yaml:"tlsKey"`
-	PollInterval     time.Duration `yaml:"pollInterval"`
-	pollTicker       *time.Ticker
-	shutdown         chan bool
-	send             chan<- comm.Message
-	services         []string
-	servicesLock     sync.RWMutex
-	cli              *client.Client
-	serviceFilters   filters.Args
-	containerFilters filters.Args
-	waitGroup        sync.WaitGroup
+    Endpoint         string        `yaml:"endpoint"`
+    LabelSelector    []string      `yaml:"labelSelector"`
+    TLSCa            string        `yaml:"tlsCa"`
+    TLSCert          string        `yaml:"tlsCert"`
+    TLSKey           string        `yaml:"tlsKey"`
+    PollInterval     time.Duration `yaml:"pollInterval"`
+    pollTicker       *time.Ticker
+    shutdown         chan bool
+    send             chan<- comm.Message
+    services         []string
+    servicesLock     sync.RWMutex
+    cli              *client.Client
+    serviceFilters   filters.Args
+    containerFilters filters.Args
+    waitGroup        sync.WaitGroup
 }
 
 func (p *Provider) init() error {
 
-	var err error
+    var err error
 
-	p.shutdown = make(chan bool)
-	p.pollTicker = time.NewTicker(p.PollInterval)
+    p.shutdown = make(chan bool)
+    p.pollTicker = time.NewTicker(p.PollInterval)
 
-	if p.PollInterval == time.Duration(0) {
-		p.PollInterval = 15 * time.Second
-	}
+    if p.PollInterval == time.Duration(0) {
+        p.PollInterval = 15 * time.Second
+    }
 
-	p.cli, err = client.NewClientWithOpts(client.WithTLSClientConfig(p.TLSCa, p.TLSCert, p.TLSKey),
-		client.WithHost(p.Endpoint),
-		// TODO: check which min docker engine api version we should support
-		client.WithVersion("1.29"),
-		client.WithHTTPHeaders(map[string]string{"User-Agent": "interlook"}))
+    p.cli, err = client.NewClientWithOpts(client.WithTLSClientConfig(p.TLSCa, p.TLSCert, p.TLSKey),
+        client.WithHost(p.Endpoint),
+        // TODO: check which min docker engine api version we should support
+        client.WithVersion("1.29"),
+        client.WithHTTPHeaders(map[string]string{"User-Agent": "interlook"}))
 
-	if err != nil {
-		return err
-	}
+    if err != nil {
+        return err
+    }
 
-	p.serviceFilters = filters.NewArgs()
+    p.serviceFilters = filters.NewArgs()
 
-	for _, value := range p.LabelSelector {
-		p.serviceFilters.Add("label", value)
-	}
+    for _, value := range p.LabelSelector {
+        p.serviceFilters.Add("label", value)
+    }
 
-	p.serviceFilters.Add("label", hostsLabel)
-	p.serviceFilters.Add("label", portLabel)
+    p.serviceFilters.Add("label", hostsLabel)
+    p.serviceFilters.Add("label", portLabel)
 
-	return nil
+    return nil
 }
 
 func (p *Provider) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 
-	p.send = send
+    p.send = send
 
-	if err := p.init(); err != nil {
-		return err
-	}
+    if err := p.init(); err != nil {
+        return err
+    }
 
-	p.waitGroup.Add(1)
-	for {
-		select {
-		case <-p.shutdown:
-			p.waitGroup.Done()
+    p.waitGroup.Add(1)
+    for {
+        select {
+        case <-p.shutdown:
+            p.waitGroup.Done()
 
-			return nil
+            return nil
 
-		case <-p.pollTicker.C:
-			log.Debug("New poll launched")
-			p.poll()
+        case <-p.pollTicker.C:
+            log.Debug("New poll launched")
+            p.poll()
 
-		case msg := <-receive:
-			log.Debugf("Received message from core: %v on %v", msg.Action, msg.Service.Name)
-			switch msg.Action {
-			case comm.RefreshAction:
-				log.Debugf("Request to refresh service %v", msg.Service.Name)
-				p.RefreshService(msg)
-			default:
-				log.Warnf("Unhandled action requested: %v", msg.Action)
-			}
-		}
-	}
+        case msg := <-receive:
+            log.Debugf("Received message from core: %v on %v", msg.Action, msg.Service.Name)
+            switch msg.Action {
+            case comm.RefreshAction:
+                log.Debugf("Request to refresh service %v", msg.Service.Name)
+                p.RefreshService(msg)
+            default:
+                log.Warnf("Unhandled action requested: %v", msg.Action)
+            }
+        }
+    }
 }
 
 func (p *Provider) Stop() error {
-	log.Debug("Stopping Swarm provider")
-	p.shutdown <- true
-	p.waitGroup.Wait()
+    log.Debug("Stopping Swarm provider")
+    p.shutdown <- true
+    p.waitGroup.Wait()
 
-	return nil
+    return nil
 }
 
 // poll get the services to be deployed
@@ -124,180 +125,199 @@ func (p *Provider) Stop() error {
 // finally send the info to the core
 func (p *Provider) poll() {
 
-	log.Debugf("looking for services with filters %v", p.serviceFilters)
+    log.Debugf("looking for services with filters %v", p.serviceFilters)
 
-	data, err := p.getFilteredServices()
-	if err != nil {
-		log.Errorf("Querying services %v", err.Error())
-		return
-	}
+    data, err := p.getFilteredServices()
+    if err != nil {
+        log.Errorf("Querying services %v", err.Error())
+        return
+    }
 
-	for _, service := range data {
-		log.Debugf("Swarm service: %v", service)
-		msg, err := p.buildMessageFromService(service)
-		log.Debugf("swarm message %v", msg)
-		if err != nil {
-			log.Debugf("Error building message for service %v %v", service.Spec.Name, err.Error())
-			continue
-		}
+    for _, service := range data {
+        log.Debugf("Swarm service: %v", service)
+        msg, err := p.buildMessageFromService(service)
+        log.Debugf("swarm message %v", msg)
+        if err != nil {
+            log.Debugf("Error building message for service %v %v", service.Spec.Name, err.Error())
+            continue
+        }
 
-		if len(msg.Service.Hosts) == 0 {
-			log.Warnf("No host found for service %v", service.Spec.Name)
-			//delMsg := p.buildDeleteMessage(service.Spec.Name)
-			//p.send <- delMsg
-			continue
-		}
+        if len(msg.Service.Hosts) == 0 {
+            log.Warnf("No host found for service %v", service.Spec.Name)
+            //delMsg := p.buildDeleteMessage(service.Spec.Name)
+            //p.send <- delMsg
+            continue
+        }
 
-		log.Debugf("%v sent msg %v", extensionName, msg)
-		p.send <- msg
-	}
+        log.Debugf("%v sent msg %v", extensionName, msg)
+        p.send <- msg
+    }
 }
 
 func (p *Provider) RefreshService(msg comm.Message) {
 
-	service := p.getServiceByName(msg.Service.Name)
+    service := p.getServiceByName(msg.Service.Name)
 
-	newMsg, err := p.buildMessageFromService(service)
-	if err != nil {
-		log.Errorf("Error building message for %v: %v", msg.Service.Name, err)
-	}
+    newMsg, err := p.buildMessageFromService(service)
+    if err != nil {
+        log.Errorf("Error building message for %v: %v", msg.Service.Name, err)
+    }
 
-	if newMsg.Service.Name == "" || len(newMsg.Service.Hosts) == 0 {
-		log.Debugf("Swarm service %v not found, will send delete", msg.Service.Name)
-		newMsg = p.buildDeleteMessage(msg.Service.Name)
-	}
+    if newMsg.Service.Name == "" || len(newMsg.Service.Hosts) == 0 {
+        log.Debugf("Swarm service %v not found, will send delete", msg.Service.Name)
+        newMsg = p.buildDeleteMessage(msg.Service.Name)
+    }
 
-	p.send <- newMsg
+    p.send <- newMsg
 
-	return
+    return
 }
 
 func (p *Provider) getFilteredServices() (services []swarm.Service, err error) {
-	ctx := context.Background()
+    ctx := context.Background()
 
-	data, err := p.cli.ServiceList(ctx, types.ServiceListOptions{
-		Filters: p.serviceFilters,
-	})
-	if err != nil {
-		log.Errorf("Querying services %v", err.Error())
-		return data, err
-	}
+    data, err := p.cli.ServiceList(ctx, types.ServiceListOptions{
+        Filters: p.serviceFilters,
+    })
+    if err != nil {
+        log.Errorf("Querying services %v", err.Error())
+        return data, err
+    }
 
-	return data, nil
+    return data, nil
 }
 
 func (p *Provider) getServiceByName(svcName string) swarm.Service {
 
-	ctx := context.Background()
+    ctx := context.Background()
 
-	p.serviceFilters.Add("name", svcName)
-	services, err := p.cli.ServiceList(ctx, types.ServiceListOptions{
-		Filters: p.serviceFilters,
-	})
-	p.serviceFilters.Del("name", svcName)
+    p.serviceFilters.Add("name", svcName)
+    services, err := p.cli.ServiceList(ctx, types.ServiceListOptions{
+        Filters: p.serviceFilters,
+    })
+    p.serviceFilters.Del("name", svcName)
 
-	if err != nil {
-		log.Errorf("Error getting service %v : %v", svcName, err)
-		return swarm.Service{}
-	}
+    if err != nil {
+        log.Errorf("Error getting service %v : %v", svcName, err)
+        return swarm.Service{}
+    }
 
-	if len(services) == 0 {
-		return swarm.Service{}
-	}
-	return services[0]
+    if len(services) == 0 {
+        return swarm.Service{}
+    }
+    return services[0]
 }
 
 func (p *Provider) getContainersByService(svcName string) ([]types.Container, error) {
 
-	ctx := context.Background()
+    ctx := context.Background()
 
-	ctFilter := filters.NewArgs()
-	ctFilter.Add("label", "com.docker.swarm.service.name="+svcName)
+    ctFilter := filters.NewArgs()
+    ctFilter.Add("label", "com.docker.swarm.service.name="+svcName)
+    //TODO: add "running" filter
+    ctList, err := p.cli.ContainerList(ctx, types.ContainerListOptions{
+        Filters: ctFilter,
+        All:     false})
+    if err != nil {
+        return ctList, err
+    }
 
-	ctList, err := p.cli.ContainerList(ctx, types.ContainerListOptions{
-		Filters: ctFilter,
-		All:     false})
-	if err != nil {
-		return ctList, err
-	}
+    return ctList, nil
+}
 
-	return ctList, nil
+func (p *Provider) getNodesRunningService(svcName string) (nodeList []string, err error) {
+
+    ctx := context.Background()
+
+    var f types.TaskListOptions
+
+    f.Filters = filters.NewArgs()
+    f.Filters.Add("desired-state", runningState)
+    f.Filters.Add("service", svcName)
+
+    tasks, err := p.cli.TaskList(ctx, f)
+    if err != nil {
+        return nodeList, err
+    }
+    for _, task := range tasks {
+        if task.Status.State == runningState {
+            nodeList = append(nodeList, task.NodeID)
+        }
+    }
+    return nodeList, nil
+
+}
+
+func (p *Provider) getNodeIP(nodeID string) (IP string, err error) {
+
+    ctx := context.Background()
+
+    var f types.NodeListOptions
+
+    f.Filters = filters.NewArgs()
+    f.Filters.Add("id", nodeID)
+
+    node, err := p.cli.NodeList(ctx, f)
+    if err != nil {
+        return "", err
+    }
+
+    if len(node) != 1 {
+        return "", errors.New("Could not get node %v's IP")
+    }
+
+    return node[0].Status.Addr, nil
 }
 
 func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message, error) {
 
-	ctx := context.Background()
+    tlsService, _ := strconv.ParseBool(service.Spec.Labels[sslLabel])
 
-	tlsService, _ := strconv.ParseBool(service.Spec.Labels[sslLabel])
+    msg := comm.Message{
+        Action: comm.AddAction,
+        Service: comm.Service{
+            Name:       service.Spec.Name,
+            Provider:   extensionName,
+            DNSAliases: strings.Split(service.Spec.Labels[hostsLabel], ","),
+            TLS:        tlsService,
+        }}
 
-	msg := comm.Message{
-		Action: comm.AddAction,
-		Service: comm.Service{
-			Name:       service.Spec.Name,
-			Provider:   extensionName,
-			DNSAliases: strings.Split(service.Spec.Labels[hostsLabel], ","),
-			TLS:        tlsService,
-		}}
+    targetPort, err := strconv.Atoi(service.Spec.Labels[portLabel])
+    if err != nil {
+        return msg, errors.New(fmt.Sprintf("Error converting %v to int (%v). Is %v correctly specified?", service.Spec.Labels[portLabel], err.Error(), portLabel))
+    }
 
-	targetPort, err := strconv.Atoi(service.Spec.Labels[portLabel])
-	if err != nil {
-		return msg, errors.New(fmt.Sprintf("Error converting %v to int (%v). Is %v correctly specified?", service.Spec.Labels[portLabel], err.Error(), portLabel))
-	}
-	/*    targetPort, err := nat.NewPort("tcp", service.Spec.Labels[portLabel])
-	      if err != nil {
-	          log.Error(err)
-	      }*/
+    // get ports published through service.Endpoint.Ports
+    ports := service.Endpoint.Ports
+    for _, port := range ports {
+        if int(port.TargetPort) == targetPort {
+            log.Debugf("PublishedPort: %v through %v", port.PublishedPort, port.PublishMode)
+            msg.Service.Port = int(port.PublishedPort)
+        }
+    }
 
-	// TODO: check if shoud control publishMode (swarm.PortConfigPublishModeHost, swarm.PortConfigPublishModeIngress)
-	// get ports published through service.Endpoint.Ports
-	ports := service.Endpoint.Ports
-	for _, port := range ports {
-		if int(port.TargetPort) == targetPort {
-			//msg.Service.Hosts = append(msg.Service.Hosts, )
-			log.Debugf("PublishedPort: %v through %v", port.PublishedPort, port.PublishMode)
-			msg.Service.Port = int(port.PublishedPort)
-		}
-	}
+    // get hosts running service container
+    nodes, err := p.getNodesRunningService(service.Spec.Name)
+    if err != nil {
+        return msg, err
+    }
+    for _, node := range nodes {
+        addr, err := p.getNodeIP(node)
+        if err != nil {
+            log.Warnf("Error getting node %v info %v", node, err.Error())
+        }
+        msg.Service.Hosts = append(msg.Service.Hosts, addr)
+    }
 
-	// get hosts running service container
-	containers, err := p.getContainersByService(service.Spec.Name)
-	if err != nil {
-		return msg, err
-	}
-
-	for _, container := range containers {
-		containerDetails, err := p.cli.ContainerInspect(ctx, container.ID)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		// get container node IP addr containerDetails.Node.IPAddress
-		msg.Service.Hosts = append(msg.Service.Hosts, containerDetails.Node.IPAddress)
-		log.Debugf("container details : %v", containerDetails.Node.IPAddress)
-
-		/*        portSettings := containerDetails.NetworkSettings.Ports
-		          for _, val := range portSettings[targetPort] {
-		              log.Debugf("host ip: %v", val.HostIP)
-		              if val.HostIP != "" {
-		                  log.Debugf("host port: %v", val.HostPort)
-		                  msg.Service.Hosts = append(msg.Service.Hosts, val.HostIP)
-		                  msg.Service.Port, err = strconv.Atoi(val.HostPort)
-		                  if err != nil {
-		                      log.Error(err)
-		                  }
-		              }
-		          }*/
-	}
-
-	return msg, nil
+    return msg, nil
 }
 
 func (p *Provider) buildDeleteMessage(svcName string) comm.Message {
-	msg := comm.Message{
-		Action: comm.DeleteAction,
-		Service: comm.Service{
-			Name: svcName,
-		}}
+    msg := comm.Message{
+        Action: comm.DeleteAction,
+        Service: comm.Service{
+            Name: svcName,
+        }}
 
-	return msg
+    return msg
 }
