@@ -5,9 +5,7 @@ import (
 	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
 	"net/http"
-	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -78,98 +76,16 @@ func (f5 *BigIP) Start(receive <-chan comm.Message, send chan<- comm.Message) er
 
 			switch msg.Action {
 			case comm.AddAction, comm.UpdateAction:
-				msg.Action = comm.UpdateAction
-				// check if virtual server already vsExist
-				var members []string
-				var port int
-				vsExist := true
-				vs, err := f5.cli.GetVirtualServer(f5.addPartitionToName(msg.Service.Name))
-				if err != nil || vs == nil {
-					vsExist = false
-				}
+				updatedMsg := f5.updateVS(msg)
 
-				// check if pool attached to vs needs to be changed
-				if vsExist {
-					pool, err := f5.cli.GetPool(vs.Pool)
-					if err != nil {
-						msg.Error = err.Error()
-					}
-
-					pm, err := f5.cli.PoolMembers(pool.FullPath)
-					if err != nil {
-						msg.Error = err.Error()
-					}
-
-					for _, member := range pm.PoolMembers {
-						i := strings.LastIndex(member.FullPath, ":")
-						port, err = strconv.Atoi(member.FullPath[i+1:])
-						if err != nil {
-							msg.Error = err.Error()
-						}
-						members = append(members, member.Address)
-					}
-					// check if current pool is as defined in msg
-					if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != port {
-						// hosts differ, update f5 pool
-						log.Debugf("pool %v: host/hostPort differs", msg.Service.Name)
-
-						if err := f5.updatePoolMembers(vs.Pool, msg); err != nil {
-							msg.Error = err.Error()
-							f5.send <- msg
-							f5.wg.Done()
-							continue
-						}
-					}
-					// check if virtual's IP is the one we got in msg
-					if !strings.Contains(vs.Destination, msg.Service.PublicIP+":"+strconv.Itoa(f5.getLBPort(msg))) {
-						log.Debugf("pool %v: exposed IP differs", msg.Service.Name)
-						if err := f5.cli.ModifyVirtualServer(vs.Name, &bigip.VirtualServer{Destination: msg.Service.PublicIP + ":" + strconv.Itoa(f5.getLBPort(msg))}); err != nil {
-							msg.Error = err.Error()
-							f5.send <- msg
-							f5.wg.Done()
-							continue
-						}
-					}
-
-					log.Debugf("f5ltm, nothing to do for service %v", msg.Service.Name)
-					f5.send <- msg
-					f5.wg.Done()
-					continue
-				}
-
-				log.Debugf("%v not found, creating pool and virtual server", msg.Service.Name)
-
-				if err := f5.createPool(msg); err != nil {
-					msg.Error = err.Error()
-					f5.send <- msg
-					f5.wg.Done()
-					continue
-				}
-
-				if err := f5.createVirtualServer(msg); err != nil {
-					msg.Error = err.Error()
-				}
-
-				f5.send <- msg
+				f5.send <- updatedMsg
 				f5.wg.Done()
 
 			case comm.DeleteAction:
 
-				msg.Action = comm.UpdateAction
+				updatedMsg := f5.deleteVS(msg)
 
-				if err := f5.cli.DeleteVirtualServer(msg.Service.Name); err != nil {
-					msg.Error = err.Error()
-				}
-
-				if err := f5.cli.DeletePool(msg.Service.Name); err != nil {
-					msg.Error = err.Error()
-				}
-
-				if err := f5.cli.DeletePool(msg.Service.Name); err != nil {
-					msg.Error = err.Error()
-				}
-
-				f5.send <- msg
+				f5.send <- updatedMsg
 				f5.wg.Done()
 			}
 		}

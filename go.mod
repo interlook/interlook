@@ -9,6 +9,7 @@ require (
 	github.com/docker/docker v1.13.1
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.3.3 // indirect
+	github.com/f5devcentral/go-bigip v0.0.0-20190828170254-35879a85cf6b
 	github.com/fatih/structs v1.1.0
 	github.com/gogo/protobuf v1.2.1 // indirect
 	github.com/google/go-cmp v0.2.0 // indirect
