@@ -83,8 +83,8 @@ func (f5 *BigIP) Start(receive <-chan comm.Message, send chan<- comm.Message) er
 				var members []string
 				var port int
 				vsExist := true
-				vs, err := f5.cli.GetVirtualServer(msg.Service.Name)
-				if err != nil {
+				vs, err := f5.cli.GetVirtualServer(f5.addPartitionToName(msg.Service.Name))
+				if err != nil || vs == nil {
 					vsExist = false
 				}
 
@@ -95,7 +95,7 @@ func (f5 *BigIP) Start(receive <-chan comm.Message, send chan<- comm.Message) er
 						msg.Error = err.Error()
 					}
 
-					pm, err := f5.cli.PoolMembers(pool.Name)
+					pm, err := f5.cli.PoolMembers(pool.FullPath)
 					if err != nil {
 						msg.Error = err.Error()
 					}
@@ -238,8 +238,8 @@ func (f5 *BigIP) updatePoolMembers(pool string, msg comm.Message) error {
 
 	for _, host := range msg.Service.Hosts {
 		members = append(members, bigip.PoolMember{
-			Name:      host,
-			Address:   host + ":" + strconv.Itoa(msg.Service.Port),
+			Name:      host + ":" + strconv.Itoa(msg.Service.Port),
+			Address:   host,
 			Partition: f5.Partition,
 		})
 	}
@@ -270,4 +270,22 @@ func (f5 *BigIP) newPoolFromService(msg comm.Message) bigip.Pool {
 	}
 
 	return pool
+}
+
+// addPartitionToPath adds the name of the partition to the given name
+// ie: myPool in partition myPartition -> /myPartition/myPool
+/*func (f5 *BigIP) addPartitionToPath(name string) (fullName string) {
+    if f5.Partition != "" {
+        return "/" + f5.Partition + "/" + name
+    }
+    return name
+}*/
+
+// addPartitionToName adds the name of the partition to the given name
+// ie: myPool in partition myPartition -> ~myPartition~myPool
+func (f5 *BigIP) addPartitionToName(name string) (fullName string) {
+	if f5.Partition != "" {
+		return "~" + f5.Partition + "~" + name
+	}
+	return name
 }
