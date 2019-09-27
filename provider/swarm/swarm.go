@@ -224,10 +224,22 @@ func (p *Provider) getNodesRunningService(svcName string) (nodeList []string, er
 	}
 	for _, task := range tasks {
 		if task.Status.State == runningState {
-			nodeList = append(nodeList, task.NodeID)
+			if !sliceContainString(task.NodeID, nodeList) {
+				nodeList = append(nodeList, task.NodeID)
+			}
 		}
 	}
 	return nodeList, nil
+
+}
+
+func sliceContainString(s string, sl []string) bool {
+	for _, x := range sl {
+		if x == s {
+			return true
+		}
+	}
+	return false
 
 }
 
