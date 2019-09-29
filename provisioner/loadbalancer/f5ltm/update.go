@@ -2,27 +2,47 @@ package f5ltm
 
 import (
 	"fmt"
-	"github.com/f5devcentral/go-bigip"
 	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
+	//"github.com/f5devcentral/go-bigip"
+	"github.com/scottdware/go-bigip"
 	"reflect"
 	"strconv"
 	"strings"
 )
 
+const (
+	vsUpdateMode = "vs"
+	//policyUpdateMode = "policy"
+)
+
+func (f5 *BigIP) updateService(msg comm.Message) comm.Message {
+	if f5.UpdateMode == vsUpdateMode {
+		m := f5.updateVS(msg)
+		return m
+	}
+	msg.Error = fmt.Sprintf("unsupported updateMode %v", f5.UpdateMode)
+	return msg
+}
+
+func (f5 *BigIP) deleteService(msg comm.Message) comm.Message {
+	if f5.UpdateMode == vsUpdateMode {
+		m := f5.deleteVS(msg)
+		return m
+	}
+	msg.Error = fmt.Sprintf("unsupported updateMode %v", f5.UpdateMode)
+	return msg
+}
+
 func (f5 *BigIP) deleteVS(msg comm.Message) comm.Message {
 
 	msg.Action = comm.UpdateAction
 
-	if err := f5.cli.DeleteVirtualServer(msg.Service.Name); err != nil {
+	if err := f5.cli.DeleteVirtualServer(f5.addPartitionToName(msg.Service.Name)); err != nil {
 		msg.Error = err.Error()
 	}
 
-	if err := f5.cli.DeletePool(msg.Service.Name); err != nil {
-		msg.Error = err.Error()
-	}
-
-	if err := f5.cli.DeletePool(msg.Service.Name); err != nil {
+	if err := f5.cli.DeletePool(f5.addPartitionToName(msg.Service.Name)); err != nil {
 		msg.Error = err.Error()
 	}
 
@@ -67,7 +87,7 @@ func (f5 *BigIP) updateVS(msg comm.Message) comm.Message {
 			// hosts differ, update f5 pool
 			log.Debugf("pool %v: host/hostPort differs", msg.Service.Name)
 
-			if err := f5.updatePoolMembers(vs.Pool, msg); err != nil {
+			if err := f5.updatePoolMembers(pool, msg); err != nil {
 				msg.Error = err.Error()
 				return msg
 			}
