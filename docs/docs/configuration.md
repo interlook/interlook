@@ -29,49 +29,6 @@ core:
   serviceMaxLastUpdated: 90s
 ``` 
 
-The other sections configure the `provider` and the `provisioners`. Each component has its own configuration. Refer to the `extension` implementation in the component package. For example for `ipalloc` refer to the package in provisioner\ipam\ipalloc.
+The other config sections configure the `provider` and the `provisioner(s)`. 
 
-* `provider`
-
-```yaml
-provider:
-  swarm:
-    endpoint: tcp://ucp.csnet.me:443
-    labelSelector:
-      - l7aas
-    tlsCa: /path/to/ca.pem
-    tlsCert: /path/to/cert.pem
-    tlsKey: /path/to/key.pem
-    pollInterval: 5s
-```
-
-* `ipam`
-
-```yaml
-ipam:
-  ipalloc:
-    network_cidr: 192.168.99.0/24
-    db_file: ./share/conf/allocated.db
-```
-
-
-* `dns`
-```yaml
-dns:
-  consul:
-    url: http://127.0.0.1:8500
-    domain:
-    token:
-```
-
-* `lb`
-
-```yaml
-lb:
-  kemplm:
-    endpoint: https://192.168.99.2
-    username: api
-    password: apiPassw0rd
-    httpPort:
-    httpsPort:
-```
+Each component has its own config section. Refer to each extension's doc for configuration reference.

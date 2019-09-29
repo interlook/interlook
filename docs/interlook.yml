@@ -67,3 +67,5 @@ lb:
         tcpProfile: ""
         loadBalancingMode: ""
         partition: ""
+        updateMode: ""
+        globalVS: ""
