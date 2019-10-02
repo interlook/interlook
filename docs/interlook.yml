@@ -60,12 +60,11 @@ lb:
         username: ""
         password: ""
         authProvider: ""
-        authToken: ""
         httpPort: 0
         httpsPort: 0
         monitorName: ""
-        tcpProfile: ""
         loadBalancingMode: ""
         partition: ""
         updateMode: ""
-        globalVS: ""
+        globalHTTPPolicy: ""
+        globalSSLPolicy: ""
