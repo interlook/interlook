@@ -20,20 +20,18 @@ type BigIP struct {
 	User              string `yaml:"username"`
 	Password          string `yaml:"password"`
 	AuthProvider      string `yaml:"authProvider"`
-	AuthToken         string `yaml:"authToken"`
 	HttpPort          int    `yaml:"httpPort"`
 	HttpsPort         int    `yaml:"httpsPort"`
 	MonitorName       string `yaml:"monitorName"`
-	TCPProfile        string `yaml:"tcpProfile"`
 	LoadBalancingMode string `yaml:"loadBalancingMode"`
 	Partition         string `yaml:"partition"`
 	UpdateMode        string `yaml:"updateMode"`
-	GlobalVS          string `yaml:"globalVS"`
-	//httpClient        *http.Client
-	cli      *bigip.BigIP
-	shutdown chan bool
-	send     chan<- comm.Message
-	wg       sync.WaitGroup
+	GlobalHTTPPolicy  string `yaml:"globalHTTPPolicy"`
+	GlobalSSLPolicy   string `yaml:"globalSSLPolicy"`
+	cli               *bigip.BigIP
+	shutdown          chan bool
+	send              chan<- comm.Message
+	wg                sync.WaitGroup
 }
 
 func (f5 *BigIP) initialize() error {
@@ -143,27 +141,36 @@ func (f5 *BigIP) buildPoolMembersFromMessage(msg comm.Message) bigip.PoolMembers
 }
 
 // createPool creates the pool with information from the message
-func (f5 *BigIP) createPool(msg comm.Message) error {
+func (f5 *BigIP) createPool(msg comm.Message) (pool *bigip.Pool, err error) {
 
-	pool := f5.newPoolFromService(msg)
-	if err := f5.cli.AddPool(&pool); err != nil {
-		return err
+	pool = f5.newPoolFromService(msg)
+	if err := f5.cli.AddPool(pool); err != nil {
+		return pool, err
 	}
 
 	members := f5.buildPoolMembersFromMessage(msg)
 
 	if err := f5.cli.UpdatePoolMembers(f5.addPartitionToName(pool.Name), &members.PoolMembers); err != nil {
-		return err
+		return pool, err
 	}
-	if err := f5.cli.ModifyPool(f5.addPartitionToName(pool.Name), &pool); err != nil {
-		return err
+	if err := f5.cli.ModifyPool(f5.addPartitionToName(pool.Name), pool); err != nil {
+		return pool, err
 	}
 
-	return nil
+	return pool, nil
 }
 
 // updatePoolMembers replace the members of the pool with the ones from the message
 func (f5 *BigIP) updatePoolMembers(pool *bigip.Pool, msg comm.Message) error {
+
+	un, err := f5.poolMembersNeedsUpdate(pool, msg)
+	if err != nil {
+		return err
+	}
+
+	if !un {
+		return nil
+	}
 
 	members := make([]bigip.PoolMember, 0)
 
@@ -199,9 +206,9 @@ func (f5 *BigIP) getLBPort(msg comm.Message) int {
 }
 
 // newPoolFromService returns a pool (name, hosts and port) from a Service
-func (f5 *BigIP) newPoolFromService(msg comm.Message) bigip.Pool {
+func (f5 *BigIP) newPoolFromService(msg comm.Message) *bigip.Pool {
 
-	pool := bigip.Pool{
+	pool := &bigip.Pool{
 		Name:              msg.Service.Name,
 		Partition:         f5.Partition,
 		Description:       fmt.Sprintf("Pool for %v - %v", msg.Service.Name, AdditionalObjectDescription),
