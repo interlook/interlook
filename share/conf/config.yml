@@ -53,6 +53,6 @@ lb:
     partition: interlook
     loadBalancingMode: least-connections-member
     updateMode: policy
-    globalHTTPPolicy: interlook
-    globalSSLPolicy:
-
+    globalHTTPPolicy: interlook_http_policy
+    globalSSLPolicy: interlook_https_policy
+    objectDescriptionSuffix:

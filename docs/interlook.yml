@@ -68,3 +68,4 @@ lb:
         updateMode: ""
         globalHTTPPolicy: ""
         globalSSLPolicy: ""
+        objectDescriptionSuffix: ""
