@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/interlook/interlook/provider/docker"
 	"github.com/interlook/interlook/provider/kubernetes"
 	"github.com/interlook/interlook/provider/swarm"
 	"github.com/interlook/interlook/provisioner/ipam/ipalloc"
@@ -37,7 +36,6 @@ type ServerConfiguration struct {
 		CleanUndeployedServiceAfter      time.Duration `yaml:"cleanUndeployedServiceAfter"`
 	} `yaml:"core"`
 	Provider struct {
-		Docker     *docker.Extension     `yaml:"docker"`
 		Swarm      *swarm.Provider       `yaml:"swarm"`
 		Kubernetes *kubernetes.Extension `yaml:"kubernetes"`
 	} `yaml:"provider"`
@@ -73,7 +71,6 @@ func genReferenceConfigYAMLFile() {
 	cfg := ServerConfiguration{}
 	cfg.Provider.Swarm = &swarm.Provider{}
 	cfg.Provider.Kubernetes = &kubernetes.Extension{}
-	cfg.Provider.Docker = &docker.Extension{}
 	cfg.IPAM.IPAlloc = &ipalloc.IPAlloc{}
 	cfg.DNS.Consul = &consul.Consul{}
 	cfg.LB.KempLM = &kemplm.KempLM{}

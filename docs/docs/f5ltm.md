@@ -15,10 +15,10 @@ Two policies can be specified, one for HTTP services (`globalHTTPPolicy`) and on
 
 
 Example of HTTP rule:
-
+![](http-policy-rule.png)
 
 Example of HTTPS rule:
-
+![](https-policy-rule.png)
     
 
 ## Configuration

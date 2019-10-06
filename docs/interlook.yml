@@ -10,16 +10,6 @@ core:
     serviceMaxLastUpdated: 0s
     cleanUndeployedServiceAfter: 0s
 provider:
-    docker:
-        name: ""
-        endpoint: ""
-        labelSelector: []
-        tlsCa: ""
-        tlsCert: ""
-        tlsKey: ""
-        watch: false
-        watchInterval: ""
-        updateInterval: ""
     swarm:
         endpoint: ""
         labelSelector: []
