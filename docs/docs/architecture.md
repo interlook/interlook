@@ -7,9 +7,7 @@ Technically, providers and provisioners are all implementations of the Extension
 
 Currently supported Providers:
 
-- [x] Docker Enterprise (Swarm)
-- [x] Docker Swarm (not tested yet)
-- [ ] Consul Catalog
+- [x] Docker Swarm (Docker Enterprise, CE not tested yet)
 
 Currently supported Provisioners:
 
