@@ -210,6 +210,7 @@ func (s *server) housekeeper() {
 		select {
 		case <-s.housekeeperShutdown:
 			log.Info("Stopping housekeeper")
+			s.housekeeperTicker.Stop()
 			s.coreWG.Done()
 			return
 
