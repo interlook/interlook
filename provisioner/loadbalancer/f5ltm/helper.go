@@ -13,8 +13,9 @@ import (
 	"strings"
 )
 
+// upsertPool update a pool. Create it if it doesn't exist
 func (f5 *BigIP) upsertPool(msg comm.Message) error {
-	// handle Pool
+
 	pool, err := f5.cli.GetPool(f5.addPartitionToName(msg.Service.Name))
 	if err != nil {
 		return errors.New(fmt.Sprintf("Could not get Pool %v %v", msg.Service.Name, err.Error()))
@@ -34,6 +35,7 @@ func (f5 *BigIP) upsertPool(msg comm.Message) error {
 	return nil
 }
 
+// buildPolicyRuleFromMsg returns a policy rule based on input message
 func (f5 *BigIP) buildPolicyRuleFromMsg(msg comm.Message) bigip.PolicyRule {
 
 	prc := bigip.PolicyRuleCondition{
@@ -70,18 +72,24 @@ func (f5 *BigIP) buildPolicyRuleFromMsg(msg comm.Message) bigip.PolicyRule {
 
 	pr := bigip.PolicyRule{
 		Name:        msg.Service.Name,
-		Description: fmt.Sprintf("route traffic for %v", msg.Service.Name),
+		Description: fmt.Sprintf("ingress rule for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
 		Conditions:  []bigip.PolicyRuleCondition{prc},
 		Actions:     []bigip.PolicyRuleAction{pra},
 	}
 	return pr
 }
 
+// policyNeedsUpdate checks if a given policy exist and if it needs to be update based on input message
 func (f5 *BigIP) policyNeedsUpdate(name string, msg comm.Message) (updateNeeded, policyRuleExist bool, err error) {
 
 	policy, err := f5.cli.GetPolicy(name)
 	if err != nil {
 		return false, false, errors.New(fmt.Sprintf("Could not get policy %v %v", name, err.Error()))
+	}
+
+	if policy == nil {
+		log.Debugf("policy %v not found", name)
+		return false, false, errors.New("policy not found")
 	}
 
 	// get the matching rule and check if they need update
@@ -149,12 +157,21 @@ func (f5 *BigIP) newPoolFromService(msg comm.Message) *bigip.Pool {
 	pool := &bigip.Pool{
 		Name:              msg.Service.Name,
 		Partition:         f5.Partition,
-		Description:       fmt.Sprintf("Pool for %v - %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
+		Description:       fmt.Sprintf("Pool for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
 		LoadBalancingMode: f5.LoadBalancingMode,
 		Monitor:           f5.MonitorName,
 	}
 
 	return pool
+}
+
+func (f5 *BigIP) getGlobalPolicyInfo(tls bool) (name, fullName, path string) {
+	globalPolicy := f5.GlobalHTTPPolicy
+	if tls {
+		globalPolicy = f5.GlobalSSLPolicy
+	}
+
+	return globalPolicy, f5.addPartitionToName("Drafts~" + globalPolicy), f5.addPartitionToPath("Drafts/" + globalPolicy)
 }
 
 // addPartitionToPath adds the name of the partition to the given name
