@@ -29,5 +29,6 @@ require (
 
 replace (
 	github.com/docker/docker => github.com/docker/engine v0.0.0-20190725163905-fa8dd90ceb7b
-	github.com/scottdware/go-bigip => ../go-bigip
+	github.com/scottdware/go-bigip => github.com/mch1307/go-bigip v0.0.0-20191005194828-916a7e83cf1f
+	gotest.tools => github.com/gotestyourself/gotest.tools v2.2.0+incompatible
 )
