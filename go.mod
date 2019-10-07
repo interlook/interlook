@@ -18,7 +18,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/scottdware/go-bigip v0.0.0-20190718174748-0e55d2c75ee2
+	github.com/scottdware/go-bigip v0.0.0-20191007160839-52b0cbd78f8d
 	github.com/sirupsen/logrus v1.4.2
 	golang.org/x/net v0.0.0-20190921015927-1a5e07d1ff72
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
@@ -29,6 +29,5 @@ require (
 
 replace (
 	github.com/docker/docker => github.com/docker/engine v0.0.0-20190725163905-fa8dd90ceb7b
-	github.com/scottdware/go-bigip => github.com/mch1307/go-bigip v0.0.0-20191005194828-916a7e83cf1f
 	gotest.tools => github.com/gotestyourself/gotest.tools v2.2.0+incompatible
 )

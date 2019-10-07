@@ -36,6 +36,7 @@ github.com/google/go-cmp v0.2.0 h1:+dTQ8DZQJz0Mb/HjFlkptS1FeQ4cWSnN941F8aEG4SQ=
 github.com/google/go-cmp v0.2.0/go.mod h1:oXzfMopK8JAjlY9xF4vHSVASa0yLyX7SntLO5aqRK0M=
 github.com/gorilla/mux v1.7.1 h1:Dw4jY2nghMMRsh1ol8dv1axHkDwMQK2DHerMNJsIpJU=
 github.com/gorilla/mux v1.7.1/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2zaAs=
+github.com/gotestyourself/gotest.tools v2.2.0+incompatible/go.mod h1:hZxYJTzTidDvaKaIyMZ2psyaT+jg0po1bq5tao4cdkw=
 github.com/hashicorp/consul/api v1.2.0 h1:oPsuzLp2uk7I7rojPKuncWbZ+m5TMoD4Ivs+2Rkeh4Y=
 github.com/hashicorp/consul/api v1.2.0/go.mod h1:1SIkFYi2ZTXUE5Kgt179+4hH33djo11+0Eo2XgTAtkw=
 github.com/hashicorp/consul/sdk v0.2.0 h1:GWFYFmry/k4b1hEoy7kSkmU8e30GAyI4VZHk0fRxeL4=
@@ -75,6 +76,7 @@ github.com/mattn/go-colorable v0.0.9/go.mod h1:9vuHe8Xs5qXnSaW/c/ABM9alt+Vo+STaO
 github.com/mattn/go-isatty v0.0.3/go.mod h1:M+lRXTBqGeGNdLjl/ufCoiOlB5xdOkqRJdNxMWT7Zi4=
 github.com/mch1307/go-bigip v0.0.0-20191004061903-9aaa2c027937 h1:WOGREiHfpvBIE+5N4uPodA4cDN7WRdxfUFI5zwrF3E8=
 github.com/mch1307/go-bigip v0.0.0-20191004061903-9aaa2c027937/go.mod h1:n+ktcb7pDsPi71Ctl3YEh57U97buMosPyV9AFjsKzmY=
+github.com/mch1307/go-bigip v0.0.0-20191005194828-916a7e83cf1f/go.mod h1:n+ktcb7pDsPi71Ctl3YEh57U97buMosPyV9AFjsKzmY=
 github.com/miekg/dns v1.0.14 h1:9jZdLNd/P4+SfEJ0TNyxYpsK8N4GtfylBLqtbYN1sbA=
 github.com/miekg/dns v1.0.14/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
 github.com/mitchellh/cli v1.0.0/go.mod h1:hNIlj7HEI86fIcpObd7a0FcrxTWetlwJDGcceTlRvqc=
@@ -101,6 +103,9 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/posener/complete v1.1.1/go.mod h1:em0nMJCgc9GFtwrmVmEMR/ZL6WyhyjMBndrE9hABlRI=
 github.com/ryanuber/columnize v0.0.0-20160712163229-9b3edd62028f/go.mod h1:sm1tb6uqfes/u+d4ooFouqFdy9/2g9QGwK3SQygK0Ts=
+github.com/scottdware/go-bigip v0.0.0-20190718174748-0e55d2c75ee2/go.mod h1:OhSseEso3+aG+mRmEQlmF2IVrf0f2VrIgoYUo7TOVl4=
+github.com/scottdware/go-bigip v0.0.0-20191007160839-52b0cbd78f8d h1:yP0gJ1BC7JIPLUwmfHk6ieT/X5lqq2ScVIO2gSa0FQw=
+github.com/scottdware/go-bigip v0.0.0-20191007160839-52b0cbd78f8d/go.mod h1:OhSseEso3+aG+mRmEQlmF2IVrf0f2VrIgoYUo7TOVl4=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 h1:nn5Wsu0esKSJiIVhscUtVbo7ada43DJhG55ua/hjS5I=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
 github.com/sirupsen/logrus v1.4.2 h1:SPIRibHv4MatM3XXNO2BJeFLZwZ2LvZgfQ5+UNI2im4=
