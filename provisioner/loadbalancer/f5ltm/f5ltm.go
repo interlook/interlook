@@ -36,10 +36,18 @@ type BigIP struct {
 	GlobalHTTPPolicy        string `yaml:"globalHTTPPolicy"`
 	GlobalSSLPolicy         string `yaml:"globalSSLPolicy"`
 	ObjectDescriptionSuffix string `yaml:"objectDescriptionSuffix"`
+	CliProxy                string `yaml:"proxy"`
 	cli                     *bigip.BigIP
 	shutdown                chan bool
 	send                    chan<- comm.Message
 	wg                      sync.WaitGroup
+}
+
+func (f5 *BigIP) getCliConfigOptions() *bigip.ConfigOptions {
+	if f5.CliProxy != "" {
+		return &bigip.ConfigOptions{Proxy: f5.CliProxy}
+	}
+	return nil
 }
 
 func (f5 *BigIP) initialize() error {
@@ -64,11 +72,12 @@ func (f5 *BigIP) initialize() error {
 	}
 
 	var err error
-	f5.cli, err = bigip.NewTokenSession(f5.Endpoint, f5.User, f5.Password, f5.AuthProvider, nil)
+	f5.cli, err = bigip.NewTokenSession(f5.Endpoint, f5.User, f5.Password, f5.AuthProvider, f5.getCliConfigOptions())
 	if err != nil {
 		log.Errorf("Could not establish connection to f5 %v", err.Error())
 		return err
 	}
+	log.Info("initial f5 connection established")
 
 	f5.shutdown = make(chan bool)
 	return nil
@@ -95,7 +104,7 @@ func (f5 *BigIP) Start(receive <-chan comm.Message, send chan<- comm.Message) er
 			f5.wg.Add(1)
 
 			// "renew" connection
-			f5.cli, _ = bigip.NewTokenSession(f5.Endpoint, f5.User, f5.Password, f5.AuthProvider, nil)
+			f5.cli, _ = bigip.NewTokenSession(f5.Endpoint, f5.User, f5.Password, f5.AuthProvider, f5.getCliConfigOptions())
 
 			switch msg.Action {
 			case comm.AddAction, comm.UpdateAction:
