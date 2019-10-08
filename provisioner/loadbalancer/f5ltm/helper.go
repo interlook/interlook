@@ -13,6 +13,22 @@ import (
 	"strings"
 )
 
+// getNodeByIP returns the node having IP
+func (f5 *BigIP) getNodeByAddress(address string) (bigip.Node, bool) {
+	list, err := f5.cli.Nodes()
+	if err != nil {
+		return bigip.Node{}, false
+	}
+
+	for _, node := range list.Nodes {
+		if node.Address == address {
+			return node, true
+		}
+	}
+
+	return bigip.Node{}, false
+}
+
 // upsertPool update a pool. Create it if it doesn't exist
 func (f5 *BigIP) upsertPool(msg comm.Message) error {
 

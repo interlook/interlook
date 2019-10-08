@@ -6,7 +6,6 @@ import (
 	"github.com/interlook/interlook/log"
 	"strings"
 
-	//"github.com/f5devcentral/go-bigip"
 	"github.com/scottdware/go-bigip"
 	"strconv"
 	"sync"
@@ -88,6 +87,7 @@ func (f5 *BigIP) Start(receive <-chan comm.Message, send chan<- comm.Message) er
 	if err := f5.initialize(); err != nil {
 		return err
 	}
+
 	f5.send = send
 
 	for {
@@ -301,15 +301,18 @@ func (f5 *BigIP) handleGlobalPolicyDelete(msg comm.Message) comm.Message {
 			log.Warnf("Error deleting draftPath policy %v %v", globalPolicy, err)
 		}
 	}()
+
 	// remove policy rule
 	if err := f5.cli.RemoveRuleFromPolicy(msg.Service.Name, draftName); err != nil {
 		msg.Error = fmt.Sprintf("error remove rule %v from policy %v", msg.Service.Name, err.Error())
 	}
+
 	// publish draft
 	if err := f5.cli.PublishDraftPolicy(draftPath); err != nil {
 		msg.Error = fmt.Sprintf("could not publish draft %v %v", draftPath, err.Error())
 		return msg
 	}
+
 	// delete pool
 	if err := f5.cli.DeletePool(f5.addPartitionToName(msg.Service.Name)); err != nil {
 		msg.Error = err.Error()
@@ -319,14 +322,25 @@ func (f5 *BigIP) handleGlobalPolicyDelete(msg comm.Message) comm.Message {
 
 func (f5 *BigIP) buildPoolMembersFromMessage(msg comm.Message) bigip.PoolMembers {
 	members := make([]bigip.PoolMember, 0)
+
 	for _, host := range msg.Service.Hosts {
-		members = append(members, bigip.PoolMember{
-			Name:      host + ":" + strconv.Itoa(msg.Service.Port),
-			Address:   host,
-			Partition: f5.Partition,
-			Monitor:   f5.MonitorName,
-		})
+		if node, ok := f5.getNodeByAddress(host); ok {
+			members = append(members, bigip.PoolMember{
+				Name:      node.Name + ":" + strconv.Itoa(msg.Service.Port),
+				Address:   node.Address,
+				Partition: node.Partition,
+			})
+		} else {
+			members = append(members, bigip.PoolMember{
+				Name:        host + ":" + strconv.Itoa(msg.Service.Port),
+				Address:     host,
+				Partition:   f5.Partition,
+				Monitor:     f5.MonitorName,
+				Description: fmt.Sprintf("Pool Member for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
+			})
+		}
 	}
+
 	return bigip.PoolMembers{PoolMembers: members}
 }
 
@@ -362,20 +376,9 @@ func (f5 *BigIP) updatePoolMembers(pool *bigip.Pool, msg comm.Message) error {
 		return nil
 	}
 
-	members := make([]bigip.PoolMember, 0)
+	members := f5.buildPoolMembersFromMessage(msg) //make([]bigip.PoolMember, 0)
 
-	for _, host := range msg.Service.Hosts {
-
-		members = append(members, bigip.PoolMember{
-			Name:        host + ":" + strconv.Itoa(msg.Service.Port),
-			Address:     host,
-			Partition:   f5.Partition,
-			Monitor:     f5.MonitorName,
-			Description: fmt.Sprintf("Pool Member for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
-		})
-	}
-
-	if err := f5.cli.UpdatePoolMembers(f5.addPartitionToName(pool.Name), &members); err != nil {
+	if err := f5.cli.UpdatePoolMembers(f5.addPartitionToName(pool.Name), &members.PoolMembers); err != nil {
 		return err
 	}
 
