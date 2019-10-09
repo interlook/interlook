@@ -67,15 +67,14 @@ func (f5 *BigIP) buildPolicyRuleFromMsg(msg comm.Message) bigip.PolicyRule {
 		Name:    "0",
 		Forward: true,
 		Pool:    f5.addPartitionToPath(msg.Service.Name),
-		Request: true,
 	}
 
 	switch msg.Service.TLS {
 	case true:
 		prc.Present = true
+		prc.ServerName = true
 		prc.SslExtension = true
 		prc.SslClientHello = true
-
 		pra.SslClientHello = true
 
 	case false:
