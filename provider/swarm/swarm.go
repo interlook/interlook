@@ -284,6 +284,10 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message,
 
 	// get ports published through service.Endpoint.Ports
 	ports := service.Endpoint.Ports
+	if ports == nil {
+		return msg, errors.New("service has no published port")
+	}
+
 	for _, port := range ports {
 		if int(port.TargetPort) == targetPort {
 			log.Debugf("PublishedPort: %v through %v", port.PublishedPort, port.PublishMode)
