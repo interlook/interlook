@@ -113,7 +113,7 @@ func (f5 *BigIP) policyNeedsUpdate(name string, msg comm.Message) (updateNeeded,
 			log.Debugf("found matching PolicyRule %v", r.Name)
 			policyRuleExist = true
 			for _, condition := range r.Conditions {
-				if condition.HttpHost && !reflect.DeepEqual(condition.Values, msg.Service.Hosts) {
+				if condition.HttpHost && !reflect.DeepEqual(condition.Values, msg.Service.DNSAliases) {
 					log.Debugf("PolicyRule condition for %v differs", msg.Service.Name)
 					return true, true, nil
 				}
