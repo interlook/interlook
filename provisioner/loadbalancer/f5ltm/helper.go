@@ -6,7 +6,6 @@ import (
 	"github.com/interlook/interlook/log"
 	"github.com/pkg/errors"
 
-	//"github.com/f5devcentral/go-bigip"
 	"github.com/scottdware/go-bigip"
 	"reflect"
 	"strconv"
@@ -29,7 +28,7 @@ func (f5 *BigIP) getNodeByAddress(address string) (bigip.Node, bool) {
 	return bigip.Node{}, false
 }
 
-// upsertPool update a pool. Create it if it doesn't exist
+// upsertPool update a Pool. Create it if it doesn't exist
 func (f5 *BigIP) upsertPool(msg comm.Message) error {
 
 	pool, err := f5.cli.GetPool(f5.addPartitionToName(msg.Service.Name))
@@ -40,7 +39,7 @@ func (f5 *BigIP) upsertPool(msg comm.Message) error {
 	if pool == nil {
 		pool, err = f5.createPool(msg)
 		if err != nil {
-			return errors.New(fmt.Sprintf("could not create pool %v %v", msg.Service.Name, err.Error()))
+			return errors.New(fmt.Sprintf("could not create Pool %v %v", msg.Service.Name, err.Error()))
 		}
 	} else {
 		if err := f5.updatePoolMembers(pool, msg); err != nil {
@@ -56,7 +55,7 @@ func (f5 *BigIP) buildPolicyRuleFromMsg(msg comm.Message) bigip.PolicyRule {
 
 	prc := bigip.PolicyRuleCondition{
 		Name:            "0",
-		CaseInsensitive: false,
+		CaseInsensitive: true,
 		Equals:          false,
 		External:        false,
 		Remote:          false,
@@ -91,6 +90,7 @@ func (f5 *BigIP) buildPolicyRuleFromMsg(msg comm.Message) bigip.PolicyRule {
 		Conditions:  []bigip.PolicyRuleCondition{prc},
 		Actions:     []bigip.PolicyRuleAction{pra},
 	}
+
 	return pr
 }
 
@@ -113,10 +113,11 @@ func (f5 *BigIP) policyNeedsUpdate(name string, msg comm.Message) (updateNeeded,
 			log.Debugf("found matching PolicyRule %v", r.Name)
 			policyRuleExist = true
 			for _, condition := range r.Conditions {
-				if condition.HttpHost && !reflect.DeepEqual(condition.Values, msg.Service.DNSAliases) {
+				if (condition.HttpHost || condition.ServerName) && !reflect.DeepEqual(condition.Values, msg.Service.DNSAliases) {
 					log.Debugf("PolicyRule condition for %v differs", msg.Service.Name)
 					return true, true, nil
 				}
+
 			}
 			for _, action := range r.Actions {
 				if action.Forward && action.Pool != f5.addPartitionToPath(msg.Service.Name) {
@@ -139,20 +140,20 @@ func (f5 *BigIP) poolMembersNeedsUpdate(pool *bigip.Pool, msg comm.Message) (boo
 
 	pm, err := f5.cli.PoolMembers(pool.FullPath)
 	if err != nil {
-		return false, errors.New(fmt.Sprintf("Could not get members of pool %v %v", pool.FullPath, err.Error()))
+		return false, errors.New(fmt.Sprintf("Could not get members of Pool %v %v", pool.FullPath, err.Error()))
 	}
 
 	for _, member := range pm.PoolMembers {
 		i := strings.LastIndex(member.FullPath, ":")
 		port, err = strconv.Atoi(member.FullPath[i+1:])
 		if err != nil {
-			return false, errors.New(fmt.Sprintf("Could not convert pool member port %v %v", member.FullPath, err.Error()))
+			return false, errors.New(fmt.Sprintf("Could not convert Pool member port %v %v", member.FullPath, err.Error()))
 		}
 		members = append(members, member.Address)
 	}
-	// check if current pool is as defined in msg
+	// check if current Pool is as defined in msg
 	if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != port {
-		log.Debugf("pool %v: host/hostPort differs", msg.Service.Name)
+		log.Debugf("Pool %v: host/hostPort differs", msg.Service.Name)
 		return true, nil
 	}
 	return false, nil
@@ -166,7 +167,7 @@ func (f5 *BigIP) getLBPort(msg comm.Message) int {
 	return f5.HttpsPort
 }
 
-// newPoolFromService returns a pool (name, hosts and port) from a Service
+// newPoolFromService returns a Pool (name, hosts and port) from a Service
 func (f5 *BigIP) newPoolFromService(msg comm.Message) *bigip.Pool {
 
 	pool := &bigip.Pool{
