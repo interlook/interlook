@@ -56,6 +56,15 @@ func (p *Provider) init() error {
 		p.PollInterval = 15 * time.Second
 	}
 
+	p.serviceFilters = filters.NewArgs()
+
+	for _, value := range p.LabelSelector {
+		p.serviceFilters.Add("label", value)
+	}
+
+	p.serviceFilters.Add("label", hostsLabel)
+	p.serviceFilters.Add("label", portLabel)
+
 	p.cli, err = client.NewClientWithOpts(client.WithTLSClientConfig(p.TLSCa, p.TLSCert, p.TLSKey),
 		client.WithHost(p.Endpoint),
 		// TODO: check which min docker engine api version we should support
@@ -65,15 +74,6 @@ func (p *Provider) init() error {
 	if err != nil {
 		return err
 	}
-
-	p.serviceFilters = filters.NewArgs()
-
-	for _, value := range p.LabelSelector {
-		p.serviceFilters.Add("label", value)
-	}
-
-	p.serviceFilters.Add("label", hostsLabel)
-	p.serviceFilters.Add("label", portLabel)
 
 	return nil
 }
@@ -235,7 +235,7 @@ func (p *Provider) getNodesRunningService(svcName string) (nodeList []string, er
 
 func sliceContainString(s string, sl []string) bool {
 	for _, x := range sl {
-		if x == s {
+		if strings.ToUpper(x) == strings.ToUpper(s) {
 			return true
 		}
 	}
@@ -258,7 +258,7 @@ func (p *Provider) getNodeIP(nodeID string) (IP string, err error) {
 	}
 
 	if len(node) != 1 {
-		return "", errors.New("Could not get node %v's IP")
+		return "", errors.New(fmt.Sprintf("Could not get node %v's IP", nodeID))
 	}
 
 	return node[0].Status.Addr, nil
