@@ -3,10 +3,8 @@ package swarm
 import (
 	"encoding/json"
 	"strings"
-
 	//"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/client"
 	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
 	"net/http"
@@ -17,35 +15,50 @@ import (
 )
 
 var (
-	p           *Provider
 	testService swarm.Service
 	node1       swarm.Node
 	node2       swarm.Node
+	msgOK       comm.Message
 )
 
 func TestMain(m *testing.M) {
 	mockSwarmAPI()
-	initTests()
+	initTestVars()
 	rc := m.Run()
 	os.Exit(rc)
 }
 
-func initTests() {
-	var err error
+// startSwarmProvider returns a "running" swarm provider instance
+func startSwarmProvider() (p *Provider, rec, send chan comm.Message) {
 	p = &Provider{
-		Endpoint:      "http://localhost:2376",
+		Endpoint:      "tcp://localhost:2377",
 		LabelSelector: []string{"l7aas=true"},
-		TLSCa:         "",
-		TLSCert:       "",
-		TLSKey:        "",
-		PollInterval:  30,
+		TLSCa:         "./test-files/ca.pem",
+		TLSCert:       "./test-files/server.pem",
+		TLSKey:        "./test-files/key.pem",
+		PollInterval:  10 * time.Second,
 	}
-	_ = p.init()
+	p.init()
+	rec = make(chan comm.Message)
+	send = make(chan comm.Message)
+	go p.Start(rec, send)
 
-	p.cli, err = client.NewClientWithOpts(client.WithHost(p.Endpoint))
-	if err != nil {
-		log.Fatal(err.Error())
-	}
+	return p, rec, send
+}
+
+// initialize test variables
+func initTestVars() {
+
+	msgOK = comm.Message{Service: comm.Service{
+		Name:       "test",
+		DNSAliases: []string{"test.caas.csnet.me"},
+		Port:       30001,
+		Hosts:      []string{"10.32.2.2", "10.32.2.3"},
+		TLS:        false,
+		Provider:   extensionName,
+	},
+		Action: comm.AddAction}
+
 	testServiceRaw := `{
     "ID": "9mnpnzenvg8p8tdbtq4wvbkcz",
     "Version": {
@@ -100,7 +113,7 @@ func initTests() {
             "Ports": [
                 {
                     "Protocol": "tcp",
-                    "TargetPort": 6379,
+                    "TargetPort": 80,
                     "PublishedPort": 30001
                 }
             ]
@@ -112,7 +125,7 @@ func initTests() {
             "Ports": [
                 {
                     "Protocol": "tcp",
-                    "TargetPort": 6379,
+                    "TargetPort": 80,
                     "PublishedPort": 30001
                 }
             ]
@@ -120,7 +133,7 @@ func initTests() {
         "Ports": [
             {
                 "Protocol": "tcp",
-                "TargetPort": 6379,
+                "TargetPort": 80,
                 "PublishedPort": 30001
             }
         ],
@@ -140,7 +153,7 @@ func initTests() {
 		log.Fatal(err)
 	}
 	node1Raw := `{
-    "ID": "10.32.2.2",
+    "ID": "p2g1i2vehdevdpwgoqr5wkq5e",
     "Version": {
         "Index": 373531
     },
@@ -214,7 +227,7 @@ func initTests() {
     }
 }`
 	node2Raw := `{
-    "ID": "10.32.2.3",
+    "ID": "nybocmfjabg3wz5yx9cex9oc4",
     "Version": {
         "Index": 373531
     },
@@ -296,24 +309,372 @@ func initTests() {
 	}
 }
 
+// starts an http server mocking docker API
 func mockSwarmAPI() {
 	go http.ListenAndServe(":2376", nil)
+	go http.ListenAndServeTLS(":2377", "./test-files/server.pem", "./test-files/key.pem", nil)
 	time.Sleep(1 * time.Second)
-	http.HandleFunc("/v1.40/services", mockServiceList)
-	http.HandleFunc("/v1.40/nodes", mockNodes)
+	http.HandleFunc("/v1.29/services", mockServiceList)
+	http.HandleFunc("/v1.29/nodes", mockNodes)
+	http.HandleFunc("/v1.29/tasks", mockTasks)
 }
 
 func mockServiceList(w http.ResponseWriter, r *http.Request) {
-	l := []swarm.Service{testService}
-	rsp, _ := json.Marshal(l)
+	var rsp []byte
+	if strings.Contains(r.RequestURI, "invalid") {
+		l := []swarm.Service{}
+		rsp, _ = json.Marshal(l)
+	} else {
+		l := []swarm.Service{testService}
+		rsp, _ = json.Marshal(l)
+	}
+
+	w.Write(rsp)
+}
+
+func mockTasks(w http.ResponseWriter, r *http.Request) {
+	rsp := `[
+    {
+        "ID": "7lmhlp7zgruu4lijoa6fahun3",
+        "Version": {
+            "Index": 128
+        },
+        "CreatedAt": "2019-10-13T19:16:28.857063284Z",
+        "UpdatedAt": "2019-10-13T19:16:32.356747518Z",
+        "Labels": {},
+        "Spec": {
+            "ContainerSpec": {
+                "Image": "nginx:latest@sha256:aeded0f2a861747f43a01cf1018cf9efe2bdd02afd57d2b11fcc7fcadc16ccd1",
+                "Labels": {
+                    "com.docker.stack.namespace": "swarmnginx"
+                },
+                "Privileges": {
+                    "CredentialSpec": null,
+                    "SELinuxContext": null
+                },
+                "Isolation": "default"
+            },
+            "Resources": {},
+            "RestartPolicy": {
+                "Condition": "on-failure",
+                "MaxAttempts": 0
+            },
+            "Placement": {
+                "Platforms": [
+                    {
+                        "Architecture": "amd64",
+                        "OS": "linux"
+                    },
+                    {
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "arm64",
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "386",
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "ppc64le",
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "s390x",
+                        "OS": "linux"
+                    }
+                ]
+            },
+            "Networks": [
+                {
+                    "Target": "7qvqlb2to5q77iw3k9mk97o4i",
+                    "Aliases": [
+                        "nginx"
+                    ]
+                }
+            ],
+            "ForceUpdate": 0
+        },
+        "ServiceID": "kind13dc6ykcr7s5lql7wv064",
+        "Slot": 2,
+        "NodeID": "p2g1i2vehdevdpwgoqr5wkq5e",
+        "Status": {
+            "Timestamp": "2019-10-13T19:16:32.318027692Z",
+            "State": "running",
+            "Message": "started",
+            "ContainerStatus": {
+                "ContainerID": "b57c703c0f9036e1f769677dbcb2981d782edee18005cbad568d3d984a4c8ad3",
+                "PID": 77098,
+                "ExitCode": 0
+            },
+            "PortStatus": {}
+        },
+        "DesiredState": "running",
+        "NetworksAttachments": [
+            {
+                "Network": {
+                    "ID": "zkw3jhutz9b61bcxwpy7sy7a8",
+                    "Version": {
+                        "Index": 6
+                    },
+                    "CreatedAt": "2019-10-12T09:05:05.02856252Z",
+                    "UpdatedAt": "2019-10-12T09:05:05.053529433Z",
+                    "Spec": {
+                        "Name": "ingress",
+                        "Labels": {},
+                        "DriverConfiguration": {},
+                        "Ingress": true,
+                        "IPAMOptions": {
+                            "Driver": {},
+                            "Configs": [
+                                {
+                                    "Subnet": "10.255.0.0/16",
+                                    "Gateway": "10.255.0.1"
+                                }
+                            ]
+                        },
+                        "Scope": "swarm"
+                    },
+                    "DriverState": {
+                        "Name": "overlay",
+                        "Options": {
+                            "com.docker.network.driver.overlay.vxlanid_list": "4096"
+                        }
+                    },
+                    "IPAMOptions": {
+                        "Driver": {
+                            "Name": "default"
+                        },
+                        "Configs": [
+                            {
+                                "Subnet": "10.255.0.0/16",
+                                "Gateway": "10.255.0.1"
+                            }
+                        ]
+                    }
+                },
+                "Addresses": [
+                    "10.255.0.18/16"
+                ]
+            },
+            {
+                "Network": {
+                    "ID": "7qvqlb2to5q77iw3k9mk97o4i",
+                    "Version": {
+                        "Index": 18
+                    },
+                    "CreatedAt": "2019-10-12T21:07:20.665409697Z",
+                    "UpdatedAt": "2019-10-12T21:07:20.666321359Z",
+                    "Spec": {
+                        "Name": "swarmnginx_default",
+                        "Labels": {
+                            "com.docker.stack.namespace": "swarmnginx"
+                        },
+                        "DriverConfiguration": {
+                            "Name": "overlay"
+                        },
+                        "Scope": "swarm"
+                    },
+                    "DriverState": {
+                        "Name": "overlay",
+                        "Options": {
+                            "com.docker.network.driver.overlay.vxlanid_list": "4097"
+                        }
+                    },
+                    "IPAMOptions": {
+                        "Driver": {
+                            "Name": "default"
+                        },
+                        "Configs": [
+                            {
+                                "Subnet": "10.0.0.0/24",
+                                "Gateway": "10.0.0.1"
+                            }
+                        ]
+                    }
+                },
+                "Addresses": [
+                    "10.0.0.20/24"
+                ]
+            }
+        ]
+    },
+    {
+        "ID": "jqfzqzz7uwo9nxazayb24ty4o",
+        "Version": {
+            "Index": 29
+        },
+        "CreatedAt": "2019-10-12T21:07:23.102122216Z",
+        "UpdatedAt": "2019-10-12T21:07:56.769583051Z",
+        "Labels": {},
+        "Spec": {
+            "ContainerSpec": {
+                "Image": "nginx:latest@sha256:aeded0f2a861747f43a01cf1018cf9efe2bdd02afd57d2b11fcc7fcadc16ccd1",
+                "Labels": {
+                    "com.docker.stack.namespace": "swarmnginx"
+                },
+                "Privileges": {
+                    "CredentialSpec": null,
+                    "SELinuxContext": null
+                },
+                "Isolation": "default"
+            },
+            "Resources": {},
+            "RestartPolicy": {
+                "Condition": "on-failure",
+                "MaxAttempts": 0
+            },
+            "Placement": {
+                "Platforms": [
+                    {
+                        "Architecture": "amd64",
+                        "OS": "linux"
+                    },
+                    {
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "arm64",
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "386",
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "ppc64le",
+                        "OS": "linux"
+                    },
+                    {
+                        "Architecture": "s390x",
+                        "OS": "linux"
+                    }
+                ]
+            },
+            "Networks": [
+                {
+                    "Target": "7qvqlb2to5q77iw3k9mk97o4i",
+                    "Aliases": [
+                        "nginx"
+                    ]
+                }
+            ],
+            "ForceUpdate": 0
+        },
+        "ServiceID": "kind13dc6ykcr7s5lql7wv064",
+        "Slot": 1,
+        "NodeID": "nybocmfjabg3wz5yx9cex9oc4",
+        "Status": {
+            "Timestamp": "2019-10-12T21:07:56.745445979Z",
+            "State": "running",
+            "Message": "started",
+            "ContainerStatus": {
+                "ContainerID": "75eefcbfb407a7bffc0b2159d07624714bc0c7697419a4ace40122cd76e556cd",
+                "PID": 43724,
+                "ExitCode": 0
+            },
+            "PortStatus": {}
+        },
+        "DesiredState": "running",
+        "NetworksAttachments": [
+            {
+                "Network": {
+                    "ID": "zkw3jhutz9b61bcxwpy7sy7a8",
+                    "Version": {
+                        "Index": 6
+                    },
+                    "CreatedAt": "2019-10-12T09:05:05.02856252Z",
+                    "UpdatedAt": "2019-10-12T09:05:05.053529433Z",
+                    "Spec": {
+                        "Name": "ingress",
+                        "Labels": {},
+                        "DriverConfiguration": {},
+                        "Ingress": true,
+                        "IPAMOptions": {
+                            "Driver": {},
+                            "Configs": [
+                                {
+                                    "Subnet": "10.255.0.0/16",
+                                    "Gateway": "10.255.0.1"
+                                }
+                            ]
+                        },
+                        "Scope": "swarm"
+                    },
+                    "DriverState": {
+                        "Name": "overlay",
+                        "Options": {
+                            "com.docker.network.driver.overlay.vxlanid_list": "4096"
+                        }
+                    },
+                    "IPAMOptions": {
+                        "Driver": {
+                            "Name": "default"
+                        },
+                        "Configs": [
+                            {
+                                "Subnet": "10.255.0.0/16",
+                                "Gateway": "10.255.0.1"
+                            }
+                        ]
+                    }
+                },
+                "Addresses": [
+                    "10.255.0.5/16"
+                ]
+            },
+            {
+                "Network": {
+                    "ID": "7qvqlb2to5q77iw3k9mk97o4i",
+                    "Version": {
+                        "Index": 18
+                    },
+                    "CreatedAt": "2019-10-12T21:07:20.665409697Z",
+                    "UpdatedAt": "2019-10-12T21:07:20.666321359Z",
+                    "Spec": {
+                        "Name": "swarmnginx_default",
+                        "Labels": {
+                            "com.docker.stack.namespace": "swarmnginx"
+                        },
+                        "DriverConfiguration": {
+                            "Name": "overlay"
+                        },
+                        "Scope": "swarm"
+                    },
+                    "DriverState": {
+                        "Name": "overlay",
+                        "Options": {
+                            "com.docker.network.driver.overlay.vxlanid_list": "4097"
+                        }
+                    },
+                    "IPAMOptions": {
+                        "Driver": {
+                            "Name": "default"
+                        },
+                        "Configs": [
+                            {
+                                "Subnet": "10.0.0.0/24",
+                                "Gateway": "10.0.0.1"
+                            }
+                        ]
+                    }
+                },
+                "Addresses": [
+                    "10.0.0.3/24"
+                ]
+            }
+        ]
+    }
+]`
 	w.Write([]byte(rsp))
 }
 
 func mockNodes(w http.ResponseWriter, r *http.Request) {
 	var l []swarm.Node
-	if strings.Contains(r.RequestURI, "10.32.2.2") {
+	if strings.Contains(r.RequestURI, "p2g1i2vehdevdpwgoqr5wkq5e") {
 		l = []swarm.Node{node1}
-	} else if strings.Contains(r.RequestURI, "10.32.2.3") {
+	} else if strings.Contains(r.RequestURI, "nybocmfjabg3wz5yx9cex9oc4") {
 		l = []swarm.Node{node2}
 	} else {
 		l = []swarm.Node{node1, node2}
@@ -323,21 +684,22 @@ func mockNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestProvider_buildDeleteMessage(t *testing.T) {
-
+	var pr *Provider
 	type args struct {
 		svcName string
 	}
 	tests := []struct {
-		name   string
-		fields *Provider
-		args   args
-		want   comm.Message
+		name string
+		pr   *Provider
+		args args
+		want comm.Message
 	}{
-		{"delMe", p, args{svcName: "del.me"}, comm.Message{Service: comm.Service{Name: "del.me"}, Action: comm.DeleteAction}},
+		{"delMe", pr, args{svcName: "del.me"}, comm.Message{Service: comm.Service{Name: "del.me"}, Action: comm.DeleteAction}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := p.buildDeleteMessage(tt.args.svcName); !reflect.DeepEqual(got, tt.want) {
+			tt.pr, _, _ = startSwarmProvider()
+			if got := tt.pr.buildDeleteMessage(tt.args.svcName); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("buildDeleteMessage() = %v, want %v", got, tt.want)
 			}
 		})
@@ -368,18 +730,20 @@ func Test_sliceContainString(t *testing.T) {
 }
 
 func TestProvider_getFilteredServices(t *testing.T) {
+	var pr *Provider
 	wantServices := []swarm.Service{testService}
 	tests := []struct {
 		name         string
-		fields       *Provider
+		pr           *Provider
 		wantServices []swarm.Service
 		wantErr      bool
 	}{
-		{"ok", p, wantServices, false},
+		{"ok", pr, wantServices, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotServices, err := p.getFilteredServices()
+			tt.pr, _, _ = startSwarmProvider()
+			gotServices, err := tt.pr.getFilteredServices()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getFilteredServices() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -392,20 +756,24 @@ func TestProvider_getFilteredServices(t *testing.T) {
 }
 
 func TestProvider_getServiceByName(t *testing.T) {
+	var pr *Provider
 	type args struct {
 		svcName string
 	}
 	tests := []struct {
 		name   string
-		fields *Provider
+		pr     *Provider
 		args   args
 		want   swarm.Service
+		wantOK bool
 	}{
-		{"found", p, args{svcName: "test"}, testService},
+		{"found", pr, args{svcName: "test"}, testService, true},
+		{"notFound", pr, args{svcName: "invalid"}, swarm.Service{}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := p.getServiceByName(tt.args.svcName); !reflect.DeepEqual(got, tt.want) {
+			tt.pr, _, _ = startSwarmProvider()
+			if got, _ := tt.pr.getServiceByName(tt.args.svcName); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getServiceByName() = %v, want %v", got, tt.want)
 			}
 		})
@@ -413,29 +781,222 @@ func TestProvider_getServiceByName(t *testing.T) {
 }
 
 func TestProvider_getNodeIP(t *testing.T) {
+	var pr *Provider
 	type args struct {
 		nodeID string
 	}
 	tests := []struct {
 		name    string
-		fields  *Provider
+		sp      *Provider
 		args    args
 		wantIP  string
 		wantErr bool
 	}{
-		{"10.32.2.2", p, args{nodeID: "10.32.2.2"}, "10.32.2.2", false},
-		{"error", p, args{nodeID: "error"}, "", true},
+		{"10.32.2.2", pr, args{nodeID: "p2g1i2vehdevdpwgoqr5wkq5e"}, "10.32.2.2", false},
+		{"error", pr, args{nodeID: "error"}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			gotIP, err := p.getNodeIP(tt.args.nodeID)
+			tt.sp, _, _ = startSwarmProvider()
+			gotIP, err := tt.sp.getNodeIP(tt.args.nodeID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getNodeIP() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if gotIP != tt.wantIP {
 				t.Errorf("getNodeIP() gotIP = %v, want %v", gotIP, tt.wantIP)
+			}
+		})
+	}
+}
+
+func TestProvider_getNodesRunningService(t *testing.T) {
+	var pr *Provider
+	type args struct {
+		svcName string
+	}
+	tests := []struct {
+		name         string
+		sp           *Provider
+		args         args
+		wantNodeList []string
+		wantErr      bool
+	}{
+		{"ok", pr, args{svcName: "test"}, []string{"p2g1i2vehdevdpwgoqr5wkq5e", "nybocmfjabg3wz5yx9cex9oc4"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.sp, _, _ = startSwarmProvider()
+			gotNodeList, err := tt.sp.getNodesRunningService(tt.args.svcName)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getNodesRunningService() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(gotNodeList, tt.wantNodeList) {
+				t.Errorf("getNodesRunningService() gotNodeList = %v, want %v", gotNodeList, tt.wantNodeList)
+			}
+		})
+	}
+}
+
+func TestProvider_buildMessageFromService(t *testing.T) {
+	var pr *Provider
+	type args struct {
+		service swarm.Service
+	}
+	tests := []struct {
+		name    string
+		sp      *Provider
+		args    args
+		want    comm.Message
+		wantErr bool
+	}{
+		{"test", pr, args{service: testService}, msgOK, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.sp, _, _ = startSwarmProvider()
+			got, err := tt.sp.buildMessageFromService(tt.args.service)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("buildMessageFromService() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("buildMessageFromService() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProvider_RefreshService(t *testing.T) {
+	var pr *Provider
+	var (
+		send chan comm.Message
+	)
+	msgOKRefresh := comm.Message{
+		Action:      comm.RefreshAction,
+		Sender:      extensionName,
+		Destination: "",
+		Error:       "",
+		Service: comm.Service{
+			Provider:   extensionName,
+			Name:       "test",
+			Hosts:      []string{"10.32.2.2", "10.32.2.3"},
+			Port:       80,
+			TLS:        false,
+			PublicIP:   "",
+			DNSAliases: []string{"test.caas.csnet.me"},
+			Info:       "",
+			Error:      "",
+		},
+	}
+
+	msgDelete := comm.Message{
+		Action: comm.DeleteAction,
+		Service: comm.Service{
+			Name: "invalid",
+			Port: 80,
+		},
+	}
+
+	type args struct {
+		msg comm.Message
+	}
+	tests := []struct {
+		name string
+		sp   *Provider
+		args args
+		want comm.Message
+	}{
+		{"refresh", pr, args{msg: msgOKRefresh}, msgOK},
+		{"delete", pr, args{msg: msgDelete}, comm.Message{
+			Action: comm.DeleteAction,
+			Service: comm.Service{
+				Name: "invalid",
+			},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.sp, _, send = startSwarmProvider()
+			go tt.sp.RefreshService(tt.args.msg)
+			got := <-send
+			go tt.sp.Stop()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Msg = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+//add test for refresh msg in provider.start
+func TestProvider_SendRefreshRequest(t *testing.T) {
+	var (
+		pr        *Provider
+		rec, send chan comm.Message
+	)
+	msgOKRefresh := comm.Message{
+		Action:      comm.RefreshAction,
+		Sender:      extensionName,
+		Destination: "",
+		Error:       "",
+		Service: comm.Service{
+			Provider:   extensionName,
+			Name:       "test",
+			Hosts:      []string{"10.32.2.2", "10.32.2.3"},
+			Port:       80,
+			TLS:        false,
+			PublicIP:   "",
+			DNSAliases: []string{"test.caas.csnet.me"},
+			Info:       "",
+			Error:      "",
+		},
+	}
+
+	type args struct {
+		msg comm.Message
+	}
+	tests := []struct {
+		name string
+		sp   *Provider
+		args args
+		want comm.Message
+	}{
+		{"refresh", pr, args{msg: msgOKRefresh}, msgOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.sp, rec, send = startSwarmProvider()
+			//go tt.pr.RefreshService(tt.args.msg)
+			rec <- tt.args.msg
+			got := <-send
+			go tt.sp.Stop()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Msg = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProvider_poll(t *testing.T) {
+	var (
+		pr   *Provider
+		send chan comm.Message
+	)
+	tests := []struct {
+		name string
+		pr   *Provider
+		want comm.Message
+	}{
+		{"poll", pr, msgOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.pr, _, send = startSwarmProvider()
+			go tt.pr.poll()
+			got := <-send
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Msg = %v, want %v", got, tt.want)
 			}
 		})
 	}

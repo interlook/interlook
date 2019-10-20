@@ -1,6 +1,5 @@
 package swarm
 
-// TODO: which auth to engine should we support. Currently tls implemented
 import (
 	"fmt"
 	"github.com/docker/docker/api/types/swarm"
@@ -144,8 +143,6 @@ func (p *Provider) poll() {
 
 		if len(msg.Service.Hosts) == 0 {
 			log.Warnf("No host found for service %v", service.Spec.Name)
-			//delMsg := p.buildDeleteMessage(service.Spec.Name)
-			//p.send <- delMsg
 			continue
 		}
 
@@ -155,16 +152,23 @@ func (p *Provider) poll() {
 }
 
 func (p *Provider) RefreshService(msg comm.Message) {
+	var (
+		newMsg comm.Message
+		err    error
+	)
 
-	service := p.getServiceByName(msg.Service.Name)
+	if service, ok := p.getServiceByName(msg.Service.Name); ok {
+		newMsg, err = p.buildMessageFromService(service)
 
-	newMsg, err := p.buildMessageFromService(service)
-	if err != nil {
-		log.Errorf("Error building message for %v: %v", msg.Service.Name, err)
-	}
+		if err != nil {
+			log.Errorf("Error building message for %v: %v", msg.Service.Name, err)
+		}
 
-	if newMsg.Service.Name == "" || len(newMsg.Service.Hosts) == 0 {
-		log.Debugf("Swarm service %v not found, will send delete", msg.Service.Name)
+		if newMsg.Service.Name == "" || len(newMsg.Service.Hosts) == 0 {
+			log.Debugf("Swarm service %v not found, send delete", msg.Service.Name)
+			newMsg = p.buildDeleteMessage(msg.Service.Name)
+		}
+	} else if !ok {
 		newMsg = p.buildDeleteMessage(msg.Service.Name)
 	}
 
@@ -187,7 +191,7 @@ func (p *Provider) getFilteredServices() (services []swarm.Service, err error) {
 	return data, nil
 }
 
-func (p *Provider) getServiceByName(svcName string) swarm.Service {
+func (p *Provider) getServiceByName(svcName string) (swarm.Service, bool) {
 
 	ctx := context.Background()
 
@@ -199,13 +203,13 @@ func (p *Provider) getServiceByName(svcName string) swarm.Service {
 
 	if err != nil {
 		log.Errorf("Error getting service %v : %v", svcName, err)
-		return swarm.Service{}
+		return swarm.Service{}, false
 	}
 
 	if len(services) == 0 {
-		return swarm.Service{}
+		return swarm.Service{}, false
 	}
-	return services[0]
+	return services[0], true
 }
 
 func (p *Provider) getNodesRunningService(svcName string) (nodeList []string, err error) {
