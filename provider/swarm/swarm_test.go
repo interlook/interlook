@@ -22,8 +22,8 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	mockSwarmAPI()
 	initTestVars()
+	mockSwarmAPI()
 	rc := m.Run()
 	os.Exit(rc)
 }
