@@ -1,6 +1,7 @@
 package f5ltm
 
 import (
+	"fmt"
 	"github.com/interlook/interlook/comm"
 	"github.com/scottdware/go-bigip"
 	"net/http"
@@ -24,9 +25,9 @@ func initTests() {
 		GlobalHTTPPolicy:        "interlook_http_policy",
 		GlobalSSLPolicy:         "interlook_https_policy",
 		ObjectDescriptionSuffix: defaultDescriptionSuffix,
-		CliProxy:                "",
+		//CliProxy:                "http://toto:titi@myproxy.com",
 	}
-	f5.cli, _ = bigip.NewTokenSession(f5.Endpoint, "dummy", "dummy", "tmos", nil)
+	f5.cli, _ = bigip.NewTokenSession(f5.Endpoint, "dummy", "dummy", "tmos", f5.getCliConfigOptions())
 
 	testPool = bigip.Pool{
 		Name:              "test",
@@ -44,8 +45,16 @@ func initTests() {
 		TLS:        false,
 	}}
 
-	msgKO = comm.Message{Service: comm.Service{
+	msgUpdate = comm.Message{Service: comm.Service{
 		Name:       "test",
+		DNSAliases: []string{"testko.caas.csnet.me"},
+		Port:       30001,
+		Hosts:      []string{"10.32.2.2", "10.32.2.99"},
+		TLS:        false,
+	}}
+
+	msgNew = comm.Message{Service: comm.Service{
+		Name:       "test2",
 		DNSAliases: []string{"testko.caas.csnet.me"},
 		Port:       30001,
 		Hosts:      []string{"10.32.2.2", "10.32.2.99"},
@@ -60,11 +69,27 @@ func initTests() {
 		TLS:        true,
 	}}
 
-	msgTLSKO = comm.Message{Service: comm.Service{
+	msgTLSUpdate = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"testko.caas.csnet.me"},
 		Port:       30001,
 		Hosts:      []string{"10.32.2.2", "10.32.2.99"},
+		TLS:        true,
+	}}
+
+	msgExistingNode = comm.Message{Service: comm.Service{
+		Name:       "test",
+		DNSAliases: []string{"new.caas.csnet.me"},
+		Port:       30001,
+		Hosts:      []string{"10.32.2.40"},
+		TLS:        true,
+	}}
+
+	msgNewNodes = comm.Message{Service: comm.Service{
+		Name:       "test",
+		DNSAliases: []string{"new.caas.csnet.me"},
+		Port:       30001,
+		Hosts:      []string{"10.32.2.50", "10.32.2.51"},
 		TLS:        true,
 	}}
 
@@ -115,6 +140,30 @@ func initTests() {
 		Actions:     []bigip.PolicyRuleAction{prSSLAction},
 	}
 
+	pmNew1 = bigip.PoolMember{
+		Name:        "10.32.2.50:30001",
+		Address:     "10.32.2.50",
+		Partition:   f5.Partition,
+		Monitor:     f5.MonitorName,
+		Description: fmt.Sprintf("Pool Member for test %v", f5.ObjectDescriptionSuffix),
+	}
+
+	pmNew2 = bigip.PoolMember{
+		Name:        "10.32.2.51:30001",
+		Address:     "10.32.2.51",
+		Partition:   f5.Partition,
+		Monitor:     f5.MonitorName,
+		Description: fmt.Sprintf("Pool Member for test %v", f5.ObjectDescriptionSuffix),
+	}
+
+	pmExisting = bigip.PoolMember{
+		Name:      "missing:30001",
+		Address:   "10.32.2.40",
+		Partition: "Common",
+	}
+
+	http.HandleFunc("/mgmt/tm/ltm/pool/~interlook~test", upsertPool)
+	http.HandleFunc("/mgmt/tm/ltm/pool/~interlook~test2", poolNotFound)
 	http.HandleFunc("/mgmt/tm/ltm/pool/~interlook~test/members", getPoolMembers)
 	http.HandleFunc("/mgmt/tm/ltm/node", getNodes)
 	http.HandleFunc("/mgmt/tm/ltm/policy/~interlook~interlook_http_policy", getPolicy)
@@ -125,6 +174,20 @@ func initTests() {
 	http.HandleFunc("/mgmt/tm/ltm/policy/~interlook~interlook_http_policy/rules/test/actions", getHTTPPolicyRuleActions)
 	http.HandleFunc("/mgmt/tm/ltm/policy/~interlook~interlook_https_policy/rules/test/conditions", getHTTPSPolicyRuleConditions)
 	http.HandleFunc("/mgmt/tm/ltm/policy/~interlook~interlook_https_policy/rules/test/actions", getHTTPSPolicyRuleActions)
+}
+
+func poolNotFound(w http.ResponseWriter, r *http.Request) {
+	rsp := `{
+    "code": 404,
+    "message": "01020036:3: The requested Pool (/interlook/test2) was not found.",
+    "errorStack": [],
+    "apiError": 3
+}`
+	w.Write([]byte(rsp))
+}
+func upsertPool(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 }
 
 func getNodes(w http.ResponseWriter, r *http.Request) {

@@ -50,6 +50,31 @@ func (f5 *BigIP) upsertPool(msg comm.Message) error {
 	return nil
 }
 
+// buildPoolMembersFromMessage returns PoolMembers based on input message
+func (f5 *BigIP) buildPoolMembersFromMessage(msg comm.Message) bigip.PoolMembers {
+	members := make([]bigip.PoolMember, 0)
+
+	for _, host := range msg.Service.Hosts {
+		if node, ok := f5.getNodeByAddress(host); ok {
+			members = append(members, bigip.PoolMember{
+				Name:      node.Name + ":" + strconv.Itoa(msg.Service.Port),
+				Address:   node.Address,
+				Partition: node.Partition,
+			})
+		} else {
+			members = append(members, bigip.PoolMember{
+				Name:        host + ":" + strconv.Itoa(msg.Service.Port),
+				Address:     host,
+				Partition:   f5.Partition,
+				Monitor:     f5.MonitorName,
+				Description: fmt.Sprintf("Pool Member for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
+			})
+		}
+	}
+
+	return bigip.PoolMembers{PoolMembers: members}
+}
+
 // buildPolicyRuleFromMsg returns a policy rule based on input message
 func (f5 *BigIP) buildPolicyRuleFromMsg(msg comm.Message) bigip.PolicyRule {
 

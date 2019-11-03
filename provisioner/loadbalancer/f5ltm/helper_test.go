@@ -9,18 +9,24 @@ import (
 )
 
 var (
-	f5             BigIP
-	testPool       bigip.Pool
-	msgOK          comm.Message
-	msgKO          comm.Message
-	msgTLSOK       comm.Message
-	msgTLSKO       comm.Message
-	pr             bigip.PolicyRule
-	prSSL          bigip.PolicyRule
-	prCondition    bigip.PolicyRuleCondition
-	prSSLCondition bigip.PolicyRuleCondition
-	prAction       bigip.PolicyRuleAction
-	prSSLAction    bigip.PolicyRuleAction
+	f5              BigIP
+	testPool        bigip.Pool
+	msgOK           comm.Message
+	msgUpdate       comm.Message
+	msgNew          comm.Message
+	msgTLSOK        comm.Message
+	msgTLSUpdate    comm.Message
+	msgExistingNode comm.Message
+	msgNewNodes     comm.Message
+	pr              bigip.PolicyRule
+	prSSL           bigip.PolicyRule
+	prCondition     bigip.PolicyRuleCondition
+	prSSLCondition  bigip.PolicyRuleCondition
+	prAction        bigip.PolicyRuleAction
+	prSSLAction     bigip.PolicyRuleAction
+	pmExisting      bigip.PoolMember
+	pmNew1          bigip.PoolMember
+	pmNew2          bigip.PoolMember
 )
 
 func TestMain(m *testing.M) {
@@ -96,7 +102,7 @@ func TestBigIP_poolMembersNeedsUpdate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			got, err := f5.poolMembersNeedsUpdate(tt.args.pool, tt.args.msg)
+			got, err := tt.f5.poolMembersNeedsUpdate(tt.args.pool, tt.args.msg)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("poolMembersNeedsUpdate() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -259,7 +265,7 @@ func TestBigIP_policyNeedsUpdate(t *testing.T) {
 	}{
 		{"httpNeedsUpdate", &f5, args{
 			name: "~interlook~interlook_http_policy",
-			msg:  msgKO,
+			msg:  msgUpdate,
 		}, true, true, false},
 		{"httpNoUpdate", &f5, args{
 			name: "~interlook~interlook_http_policy",
@@ -267,7 +273,7 @@ func TestBigIP_policyNeedsUpdate(t *testing.T) {
 		}, false, true, false},
 		{"httpsNeedsUpdate", &f5, args{
 			name: "~interlook~interlook_https_policy",
-			msg:  msgTLSKO,
+			msg:  msgTLSUpdate,
 		}, true, true, false},
 		{"httpsNoUpdate", &f5, args{
 			name: "~interlook~interlook_https_policy",
@@ -286,6 +292,56 @@ func TestBigIP_policyNeedsUpdate(t *testing.T) {
 			}
 			if gotPolicyRuleExist != tt.wantPolicyRuleExist {
 				t.Errorf("policyNeedsUpdate() gotPolicyRuleExist = %v, want %v", gotPolicyRuleExist, tt.wantPolicyRuleExist)
+			}
+		})
+	}
+}
+
+func TestBigIP_buildPoolMembersFromMessage(t *testing.T) {
+
+	type args struct {
+		msg comm.Message
+	}
+	tests := []struct {
+		name   string
+		fields *BigIP
+		args   args
+		want   bigip.PoolMembers
+	}{
+		{"existingNode", &f5, args{msg: msgExistingNode}, bigip.PoolMembers{
+			PoolMembers: []bigip.PoolMember{
+				pmExisting}}},
+		{"newNode", &f5, args{msg: msgNewNodes}, bigip.PoolMembers{
+			PoolMembers: []bigip.PoolMember{
+				pmNew1, pmNew2}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			//time.Sleep(5*time.Second)
+			if got := f5.buildPoolMembersFromMessage(tt.args.msg); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("buildPoolMembersFromMessage() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBigIP_upsertPool(t *testing.T) {
+	type args struct {
+		msg comm.Message
+	}
+	tests := []struct {
+		name    string
+		fields  *BigIP
+		args    args
+		wantErr bool
+	}{
+		//{"updatePool", &f5, args{msg: msgUpdate}, false},
+		{"createPool", &f5, args{msg: msgNew}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := f5.upsertPool(tt.args.msg); (err != nil) != tt.wantErr {
+				t.Errorf("upsertPool() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
