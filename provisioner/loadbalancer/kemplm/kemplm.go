@@ -307,7 +307,7 @@ func (k *KempLM) executeRequest(r *http.Request) (body []byte, statusCode int, e
 	}
 	defer func() {
 		if err := res.Body.Close(); err != nil {
-			log.Errorf("Error closing body", err)
+			log.Errorf("Error closing body %v", err)
 		}
 	}()
 
