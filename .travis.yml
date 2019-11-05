@@ -1,0 +1,10 @@
+# .travis.yml
+language: go
+go:
+    - 1.13.4
+install: true
+sudo: required
+before_install:
+    - go get github.com/mattn/goveralls
+script:
+    - goveralls -v -service=travis-ci
