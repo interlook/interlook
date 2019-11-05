@@ -76,7 +76,7 @@ func (i *IPAlloc) Start(receive <-chan comm.Message, send chan<- comm.Message) e
 			case comm.DeleteAction:
 				msg.Action = comm.UpdateAction
 				if err := i.deleteService(msg.Service.Name); err != nil {
-					log.Errorf("Error deleting service %v", msg.Service.Name, err.Error())
+					log.Errorf("Error deleting service %v %v", msg.Service.Name, err.Error())
 					msg.Error = err.Error()
 					i.wg.Done()
 					send <- msg
