@@ -95,7 +95,7 @@ func (s *provisionerState) execute(we *workflowEntry, msg comm.Message) {
 		if msg.Error != "" {
 			we.setWIP(false)
 			we.setError(msg.Error)
-			log.Errorf("%v entry in error %%", msg.Service.Name, msg.Error)
+			log.Errorf("%v entry in error %v", msg.Service.Name, msg.Error)
 			return
 		}
 
