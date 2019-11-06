@@ -13,7 +13,7 @@ var logLevel string
 
 func TestMain(m *testing.M) {
 	rc := m.Run()
-	//cleanUP()
+	cleanUP()
 	os.Exit(rc)
 }
 
