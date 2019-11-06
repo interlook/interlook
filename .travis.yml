@@ -10,3 +10,5 @@ before_install:
 script:
     - go test ./... -v -covermode=count -coverprofile=coverage.out
     - goveralls -v -coverprofile=coverage.out -service=travis-ci
+after_success:
+    - test -n "$TRAVIS_TAG" && curl -sL https://git.io/goreleaser | bash
