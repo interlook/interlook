@@ -1,3 +1,7 @@
+![Travis (.org)](https://img.shields.io/travis/interlook/interlook)
+[![Coverage Status](https://coveralls.io/repos/github/interlook/interlook/badge.svg?branch=master)](https://coveralls.io/github/interlook/interlook?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/interlook/interlook)](https://goreportcard.com/report/github.com/interlook/interlook)
+
 # interlook
 
 Dynamically provision (V)IP, Load Balancer configuration and DNS alias for services deployed on containers platforms.
