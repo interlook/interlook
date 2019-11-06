@@ -1,11 +1,39 @@
-site_name: Interlook
+site_name: interlook
 nav:
     - Home: index.md
     - Concept: concept.md
-    - Configuration: configuration.md
     - Architecture: architecture.md
-    - Extensions: extensions.md
+    -   Configuration: configuration.md
     - Workflow: workflow.md
-    - Extend Interlook: extension.md
+    -   Provider:
+            -   Swarm: swarm.md
+    -   Provisioner:
+            -   dns:
+                    -   consul: consul.md
+            -   ipam:
+                    -   ipalloc: ipalloc.md
+            -   loadblancer:
+                    -   kemplm: kemplm.md
+                    -   f5ltm: f5ltm.md
+    -   API: api.md
+    -   Extending Interlook: extension.md
 
 theme: material
+
+markdown_extensions:
+    - pymdownx.arithmatex
+    -   pymdownx.betterem:
+            smart_enable: all
+    - pymdownx.caret
+    - pymdownx.critic
+    - pymdownx.details
+    -   pymdownx.emoji:
+            emoji_generator: !!python/name:pymdownx.emoji.to_svg
+    - pymdownx.inlinehilite
+    - pymdownx.magiclink
+    - pymdownx.mark
+    - pymdownx.smartsymbols
+    - pymdownx.superfences
+    -   pymdownx.tasklist:
+            custom_checkbox: true
+    - pymdownx.tilde

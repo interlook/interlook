@@ -3,7 +3,7 @@ core:
   logLevel: DEBUG
   listenPort: 8080
   logFile : stdout
-  workflowSteps: provider.swarm,ipam.ipalloc,dns.consul,lb.f5ltm
+  workflowSteps: provider.swarm,lb.f5ltm
   workflowEntriesFile: ./share/flowentries.db
   workflowActivityLauncherInterval: 3s
   workflowHousekeeperInterval: 60s
@@ -16,9 +16,9 @@ provider:
     endpoint: tcp://ucp.csnet.me:443
     labelSelector:
       - l7aas
-    tlsCa: /home/michael/dkr/bundle/admin/ca.pem
-    tlsCert: /home/michael/dkr/bundle/admin/cert.pem
-    tlsKey: /home/michael/dkr/bundle/admin/key.pem
+    tlsCa: /home/michael/dkr/bundle/interlook/ca.pem
+    tlsCert: /home/michael/dkr/bundle/interlook/cert.pem
+    tlsKey: /home/michael/dkr/bundle/interlook/key.pem
     pollInterval: 5s
 
 ipam:
@@ -43,7 +43,7 @@ lb:
   f5ltm:
     httpEndpoint: https://10.32.20.100
     username: api
-    password: default
+    password: restaccess
     authProvider: tmos
     authToken:
     httpPort: 80
@@ -52,4 +52,7 @@ lb:
     tcpProfile:
     partition: interlook
     loadBalancingMode: least-connections-member
-
+    updateMode: policy
+    globalHTTPPolicy: interlook_http_policy
+    globalSSLPolicy: interlook_https_policy
+    objectDescriptionSuffix:

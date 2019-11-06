@@ -10,16 +10,6 @@ core:
     serviceMaxLastUpdated: 0s
     cleanUndeployedServiceAfter: 0s
 provider:
-    docker:
-        name: ""
-        endpoint: ""
-        labelSelector: []
-        tlsCa: ""
-        tlsCert: ""
-        tlsKey: ""
-        watch: false
-        watchInterval: ""
-        updateInterval: ""
     swarm:
         endpoint: ""
         labelSelector: []
@@ -60,10 +50,13 @@ lb:
         username: ""
         password: ""
         authProvider: ""
-        authToken: ""
         httpPort: 0
         httpsPort: 0
         monitorName: ""
-        tcpProfile: ""
         loadBalancingMode: ""
         partition: ""
+        updateMode: ""
+        globalHTTPPolicy: ""
+        globalSSLPolicy: ""
+        objectDescriptionSuffix: ""
+        proxy: ""

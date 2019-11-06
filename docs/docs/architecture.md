@@ -6,17 +6,16 @@ Technically, providers and provisioners are all implementations of the Extension
 
 
 Currently supported Providers:
- * ~~Docker~~
- * Docker Swarm (not tested yet)
- * Docker Enterprise (Swarm)
- * ~~Consul Catalog~~
+
+- [x] Docker Swarm (Docker Enterprise, CE not tested yet)
 
 Currently supported Provisioners:
+
  * IP:
-    * ipalloc (an embedded simple local IPAM)
-    * ~~GestioIP~~
+    - [x] ipalloc (an embedded simple local IPAM)
+    - [ ] GestioIP
  * DNS:
-    * Consul (DNS records will contain Consul specific suffix: .service._consul-domain_, use CoreDNS with rewrite)
+    - [x] Consul (DNS records will contain Consul specific suffix: .service._consul-domain_, use CoreDNS with rewrite)
  * Load Balancer:
-    * Kemp LoadMaster
-    * F5 Big-IP LTM
+    - [x] Kemp LoadMaster
+    - [x] F5 Big-IP LTM
