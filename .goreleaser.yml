@@ -1,15 +1,13 @@
 # .goreleaser.yml
 builds:
-    -   main: ./cmd/main.go
-        binary: program
+    -   main: interlook.go
+        binary: interlook
         ldflags:
             - -s -w -X main.build={{.Version}}
         env:
             - CGO_ENABLED=0
         goos:
             - linux
-            - darwin
-            - windows
         goarch:
             - amd64
 archives:
