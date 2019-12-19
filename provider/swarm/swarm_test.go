@@ -15,10 +15,15 @@ import (
 )
 
 var (
-	testService swarm.Service
-	node1       swarm.Node
-	node2       swarm.Node
-	msgOK       comm.Message
+	testService        swarm.Service
+	node1              swarm.Node
+	node2              swarm.Node
+	msgOK              comm.Message
+	targetOK           []comm.Target
+	targetUpd          []comm.Target
+	targetInvalid      []comm.Target
+	targetHostOnly     []comm.Target
+	servicePubHostOnly []servicePublishConfig
 )
 
 func TestMain(m *testing.M) {
@@ -48,12 +53,48 @@ func startSwarmProvider() (p *Provider, rec, send chan comm.Message) {
 
 // initialize test variables
 func initTestVars() {
+	servicePubHostOnly = append(servicePubHostOnly, servicePublishConfig{
+		ip:         "10.32.2.2",
+		portConfig: swarm.PortConfig{},
+	})
+	servicePubHostOnly = append(servicePubHostOnly, servicePublishConfig{
+		ip:         "10.32.2.3",
+		portConfig: swarm.PortConfig{},
+	})
+
+	targetOK = append(targetOK, comm.Target{
+		Host: "10.32.2.2",
+		Port: 30001,
+	})
+	targetOK = append(targetOK, comm.Target{
+		Host: "10.32.2.3",
+		Port: 30001,
+	})
+
+	targetUpd = append(targetUpd, comm.Target{
+		Host: "10.32.2.2",
+		Port: 80,
+	})
+	targetUpd = append(targetUpd, comm.Target{
+		Host: "10.32.2.3",
+		Port: 80,
+	})
+	targetInvalid = append(targetInvalid, comm.Target{
+		Host: "invalid",
+		Port: 80,
+	})
+
+	targetHostOnly = append(targetHostOnly, comm.Target{
+		Host: "10.32.2.2",
+	})
+	targetHostOnly = append(targetHostOnly, comm.Target{
+		Host: "10.32.2.3",
+	})
 
 	msgOK = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"test.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.2", "10.32.2.3"},
+		Targets:    targetOK,
 		TLS:        false,
 		Provider:   extensionName,
 	},
@@ -114,7 +155,8 @@ func initTestVars() {
                 {
                     "Protocol": "tcp",
                     "TargetPort": 80,
-                    "PublishedPort": 30001
+                    "PublishedPort": 30001,
+                    "PublishMode": "ingress"
                 }
             ]
         }
@@ -126,7 +168,8 @@ func initTestVars() {
                 {
                     "Protocol": "tcp",
                     "TargetPort": 80,
-                    "PublishedPort": 30001
+                    "PublishedPort": 30001,
+                    "PublishMode": "ingress"
                 }
             ]
         },
@@ -134,7 +177,8 @@ func initTestVars() {
             {
                 "Protocol": "tcp",
                 "TargetPort": 80,
-                "PublishedPort": 30001
+                "PublishedPort": 30001,
+                "PublishMode": "ingress"
             }
         ],
         "VirtualIPs": [
@@ -819,15 +863,15 @@ func TestProvider_getNodesRunningService(t *testing.T) {
 		name         string
 		sp           *Provider
 		args         args
-		wantNodeList []string
+		wantNodeList []servicePublishConfig
 		wantErr      bool
 	}{
-		{"ok", pr, args{svcName: "test"}, []string{"p2g1i2vehdevdpwgoqr5wkq5e", "nybocmfjabg3wz5yx9cex9oc4"}, false},
+		{"ok", pr, args{svcName: "test"}, servicePubHostOnly, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.sp, _, _ = startSwarmProvider()
-			gotNodeList, err := tt.sp.getNodesRunningService(tt.args.svcName)
+			gotNodeList, err := tt.sp.getTaskPublishInfo(tt.args.svcName)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getNodesRunningService() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -873,6 +917,7 @@ func TestProvider_RefreshService(t *testing.T) {
 	var (
 		send chan comm.Message
 	)
+
 	msgOKRefresh := comm.Message{
 		Action:      comm.RefreshAction,
 		Sender:      extensionName,
@@ -881,8 +926,7 @@ func TestProvider_RefreshService(t *testing.T) {
 		Service: comm.Service{
 			Provider:   extensionName,
 			Name:       "test",
-			Hosts:      []string{"10.32.2.2", "10.32.2.3"},
-			Port:       80,
+			Targets:    targetInvalid,
 			TLS:        false,
 			PublicIP:   "",
 			DNSAliases: []string{"test.caas.csnet.me"},
@@ -895,7 +939,7 @@ func TestProvider_RefreshService(t *testing.T) {
 		Action: comm.DeleteAction,
 		Service: comm.Service{
 			Name: "invalid",
-			Port: 80,
+			//Port: 80,
 		},
 	}
 
@@ -943,8 +987,7 @@ func TestProvider_SendRefreshRequest(t *testing.T) {
 		Service: comm.Service{
 			Provider:   extensionName,
 			Name:       "test",
-			Hosts:      []string{"10.32.2.2", "10.32.2.3"},
-			Port:       80,
+			Targets:    targetUpd,
 			TLS:        false,
 			PublicIP:   "",
 			DNSAliases: []string{"test.caas.csnet.me"},

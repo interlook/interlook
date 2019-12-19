@@ -54,17 +54,17 @@ func (f5 *BigIP) upsertPool(msg comm.Message) error {
 func (f5 *BigIP) buildPoolMembersFromMessage(msg comm.Message) bigip.PoolMembers {
 	members := make([]bigip.PoolMember, 0)
 
-	for _, host := range msg.Service.Hosts {
-		if node, ok := f5.getNodeByAddress(host); ok {
+	for _, t := range msg.Service.Targets {
+		if node, ok := f5.getNodeByAddress(t.Host); ok {
 			members = append(members, bigip.PoolMember{
-				Name:      node.Name + ":" + strconv.Itoa(msg.Service.Port),
+				Name:      node.Name + ":" + strconv.Itoa(int(t.Port)),
 				Address:   node.Address,
 				Partition: node.Partition,
 			})
 		} else {
 			members = append(members, bigip.PoolMember{
-				Name:        host + ":" + strconv.Itoa(msg.Service.Port),
-				Address:     host,
+				Name:        t.Host + ":" + strconv.Itoa(int(t.Port)),
+				Address:     t.Host,
 				Partition:   f5.Partition,
 				Monitor:     f5.MonitorName,
 				Description: fmt.Sprintf("Pool Member for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
@@ -159,7 +159,7 @@ func (f5 *BigIP) policyNeedsUpdate(name string, msg comm.Message) (updateNeeded,
 func (f5 *BigIP) poolMembersNeedsUpdate(pool *bigip.Pool, msg comm.Message) (bool, error) {
 
 	var (
-		members []string
+		targets []comm.Target
 		port    int
 	)
 
@@ -174,10 +174,14 @@ func (f5 *BigIP) poolMembersNeedsUpdate(pool *bigip.Pool, msg comm.Message) (boo
 		if err != nil {
 			return false, errors.New(fmt.Sprintf("Could not convert Pool member port %v %v", member.FullPath, err.Error()))
 		}
-		members = append(members, member.Address)
+		targets = append(targets, comm.Target{
+			Host: member.Address,
+			Port: uint32(port),
+		})
+
 	}
 	// check if current Pool is as defined in msg
-	if !reflect.DeepEqual(members, msg.Service.Hosts) || msg.Service.Port != port {
+	if !reflect.DeepEqual(targets, msg.Service.Targets) {
 		log.Debugf("Pool %v: host/hostPort differs", msg.Service.Name)
 		return true, nil
 	}

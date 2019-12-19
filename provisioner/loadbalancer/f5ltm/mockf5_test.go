@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+var (
+	targetNewNodes []comm.Target
+	targetOK       []comm.Target
+	targetUpdate   []comm.Target
+)
+
 func initTests() {
 	go http.ListenAndServe(":9080", nil)
 	time.Sleep(1 * time.Second)
@@ -27,7 +33,7 @@ func initTests() {
 		ObjectDescriptionSuffix: defaultDescriptionSuffix,
 		//CliProxy:                "http://toto:titi@myproxy.com",
 	}
-	f5.cli, _ = bigip.NewTokenSession(f5.Endpoint, "dummy", "dummy", "tmos", f5.getCliConfigOptions())
+	f5.cli, _ = bigip.NewTokenSession(f5.Endpoint, "dummy", "dummy", "tmos", nil)
 
 	testPool = bigip.Pool{
 		Name:              "test",
@@ -37,59 +43,83 @@ func initTests() {
 		Monitor:           f5.MonitorName,
 	}
 
+	targetOK = append(targetOK, comm.Target{
+		Host: "10.32.2.2",
+		Port: 30001,
+	})
+	targetOK = append(targetOK, comm.Target{
+		Host: "10.32.2.3",
+		Port: 30001,
+	})
+
+	targetUpdate = append(targetUpdate, comm.Target{
+		Host: "10.32.2.2",
+		Port: 30001,
+	})
+	targetUpdate = append(targetUpdate, comm.Target{
+		Host: "10.32.2.99",
+		Port: 30001,
+	})
+
+	targetNewNodes = append(targetNewNodes, comm.Target{
+		Host: "10.32.2.50",
+		Port: 30001,
+	})
+	targetNewNodes = append(targetNewNodes, comm.Target{
+		Host: "10.32.2.51",
+		Port: 30001,
+	})
+
 	msgOK = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"test.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.2", "10.32.2.3"},
+		Targets:    targetOK,
 		TLS:        false,
 	}}
 
 	msgUpdate = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"testko.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.2", "10.32.2.99"},
+		Targets:    targetUpdate,
 		TLS:        false,
 	}}
 
 	msgNew = comm.Message{Service: comm.Service{
 		Name:       "test2",
 		DNSAliases: []string{"testko.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.2", "10.32.2.99"},
+		Targets:    targetUpdate,
 		TLS:        false,
 	}}
 
 	msgTLSOK = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"test.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.2", "10.32.2.3"},
+		Targets:    targetOK,
 		TLS:        true,
 	}}
 
 	msgTLSUpdate = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"testko.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.2", "10.32.2.99"},
+		Targets:    targetUpdate,
 		TLS:        true,
 	}}
 
 	msgExistingNode = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"new.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.40"},
-		TLS:        true,
+		Targets: []comm.Target{comm.Target{
+			Host: "10.32.2.40",
+			Port: 30001,
+		},
+		},
+		TLS: true,
 	}}
 
 	msgNewNodes = comm.Message{Service: comm.Service{
 		Name:       "test",
 		DNSAliases: []string{"new.caas.csnet.me"},
-		Port:       30001,
-		Hosts:      []string{"10.32.2.50", "10.32.2.51"},
+		Targets:    targetNewNodes,
 		TLS:        true,
 	}}
 
@@ -282,7 +312,7 @@ func getPoolMembers(w http.ResponseWriter, r *http.Request) {
     "items": [
         {
             "kind": "tm:ltm:testPool:members:membersstate",
-            "name": "10.32.2.61:30001",
+            "name": "10.32.2.2:30001",
             "partition": "interlook",
             "fullPath": "/interlook/10.32.2.2:30001",
             "generation": 919,
@@ -305,7 +335,7 @@ func getPoolMembers(w http.ResponseWriter, r *http.Request) {
         },
         {
             "kind": "tm:ltm:testPool:members:membersstate",
-            "name": "10.32.2.62:30001",
+            "name": "10.32.2.3:30001",
             "partition": "interlook",
             "fullPath": "/interlook/10.32.2.3:30001",
             "generation": 919,

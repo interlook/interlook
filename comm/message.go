@@ -23,6 +23,12 @@ type Message struct {
 	Service     Service
 }
 
+// Target holds the ip and port of service backend
+type Target struct {
+	Host string `json:"host,omitempty"`
+	Port uint32 `json:"port,omitempty"`
+}
+
 // BuildMessage returns a message built on service information
 func BuildMessage(service Service, reverse bool) Message {
 	var msg Message
@@ -42,8 +48,7 @@ func BuildMessage(service Service, reverse bool) Message {
 type Service struct {
 	Provider   string   `json:"provider,omitempty"`
 	Name       string   `json:"name,omitempty"`
-	Hosts      []string `json:"hosts,omitempty"`
-	Port       int      `json:"port,omitempty"`
+	Targets    []Target `json:"targets,omitempty"`
 	TLS        bool     `json:"tls,omitempty"`
 	PublicIP   string   `json:"public_ip,omitempty"`
 	DNSAliases []string `json:"dns_name,omitempty"`
@@ -57,18 +62,19 @@ type Service struct {
 // returns a list of fields that differ
 func (s *Service) IsSameThan(targetService Service) (bool, []string) {
 	var diff []string
+
 	if !reflect.DeepEqual(s.DNSAliases, targetService.DNSAliases) {
 		diff = append(diff, "DNSNames")
 	}
-	if s.Port != targetService.Port {
-		diff = append(diff, "Port")
-	}
+
 	if s.TLS != targetService.TLS {
 		diff = append(diff, "TLS")
 	}
-	if !reflect.DeepEqual(s.Hosts, targetService.Hosts) {
-		diff = append(diff, "Hosts")
+
+	if !reflect.DeepEqual(s.Targets, targetService.Targets) {
+		diff = append(diff, "Targets")
 	}
+
 	if len(diff) > 0 {
 		return false, diff
 	}

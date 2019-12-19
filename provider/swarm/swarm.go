@@ -25,23 +25,29 @@ const (
 	runningState  = "running"
 )
 
+type servicePublishConfig struct {
+	ip         string
+	portConfig swarm.PortConfig
+}
+
 // Provider holds the provider configuration
 type Provider struct {
-	Endpoint         string        `yaml:"endpoint"`
-	LabelSelector    []string      `yaml:"labelSelector"`
-	TLSCa            string        `yaml:"tlsCa"`
-	TLSCert          string        `yaml:"tlsCert"`
-	TLSKey           string        `yaml:"tlsKey"`
-	PollInterval     time.Duration `yaml:"pollInterval"`
-	pollTicker       *time.Ticker
-	shutdown         chan bool
-	send             chan<- comm.Message
-	services         []string
-	servicesLock     sync.RWMutex
-	cli              *client.Client
-	serviceFilters   filters.Args
-	containerFilters filters.Args
-	waitGroup        sync.WaitGroup
+	Endpoint               string        `yaml:"endpoint"`
+	LabelSelector          []string      `yaml:"labelSelector"`
+	TLSCa                  string        `yaml:"tlsCa"`
+	TLSCert                string        `yaml:"tlsCert"`
+	TLSKey                 string        `yaml:"tlsKey"`
+	PollInterval           time.Duration `yaml:"pollInterval"`
+	DefaultPortPublishMode string        `yaml:"defaultPortPublishMode"`
+	pollTicker             *time.Ticker
+	shutdown               chan bool
+	send                   chan<- comm.Message
+	services               []string
+	servicesLock           sync.RWMutex
+	cli                    *client.Client
+	serviceFilters         filters.Args
+	containerFilters       filters.Args
+	waitGroup              sync.WaitGroup
 }
 
 func (p *Provider) init() error {
@@ -141,7 +147,7 @@ func (p *Provider) poll() {
 			continue
 		}
 
-		if len(msg.Service.Hosts) == 0 {
+		if len(msg.Service.Targets) == 0 {
 			log.Warnf("No host found for service %v", service.Spec.Name)
 			continue
 		}
@@ -164,7 +170,7 @@ func (p *Provider) RefreshService(msg comm.Message) {
 			log.Errorf("Error building message for %v: %v", msg.Service.Name, err)
 		}
 
-		if newMsg.Service.Name == "" || len(newMsg.Service.Hosts) == 0 {
+		if newMsg.Service.Name == "" || len(newMsg.Service.Targets) == 0 {
 			log.Debugf("Swarm service %v not found, send delete", msg.Service.Name)
 			newMsg = p.buildDeleteMessage(msg.Service.Name)
 		}
@@ -212,7 +218,7 @@ func (p *Provider) getServiceByName(svcName string) (swarm.Service, bool) {
 	return services[0], true
 }
 
-func (p *Provider) getNodesRunningService(svcName string) (nodeList []string, err error) {
+func (p *Provider) getTaskPublishInfo(svcName string) (publishConfig []servicePublishConfig, err error) {
 
 	ctx := context.Background()
 
@@ -224,16 +230,26 @@ func (p *Provider) getNodesRunningService(svcName string) (nodeList []string, er
 
 	tasks, err := p.cli.TaskList(ctx, f)
 	if err != nil {
-		return nodeList, err
+		return publishConfig, err
 	}
 	for _, task := range tasks {
-		if task.Status.State == runningState {
-			if !sliceContainString(task.NodeID, nodeList) {
-				nodeList = append(nodeList, task.NodeID)
-			}
+		// get published port for targetPort
+		addr, err := p.getNodeIP(task.NodeID)
+		if err != nil {
+			continue
 		}
+
+		pc := servicePublishConfig{
+			ip: addr,
+		}
+
+		for _, pp := range task.Status.PortStatus.Ports {
+			pc.portConfig = pp
+		}
+
+		publishConfig = append(publishConfig, pc)
 	}
-	return nodeList, nil
+	return publishConfig, nil
 
 }
 
@@ -244,7 +260,6 @@ func sliceContainString(s string, sl []string) bool {
 		}
 	}
 	return false
-
 }
 
 func (p *Provider) getNodeIP(nodeID string) (IP string, err error) {
@@ -286,30 +301,44 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message,
 		return msg, errors.New(fmt.Sprintf("Error converting %v to int (%v). Is %v correctly specified?", service.Spec.Labels[portLabel], err.Error(), portLabel))
 	}
 
-	// get ports published through service.Endpoint.Ports
-	ports := service.Endpoint.Ports
-	if ports == nil {
+	// get host published hosts / ports
+	pubPortInfo, err := p.getTaskPublishInfo(service.Spec.Name)
+	if err != nil {
+		log.Warnf("could not find published port info: %v", err)
+	}
+
+	//    svcPorts := service.Endpoint.Ports
+	if service.Endpoint.Ports == nil {
 		return msg, errors.New("service has no published port")
 	}
 
-	for _, port := range ports {
-		if int(port.TargetPort) == targetPort {
+	// check Ingress published port
+	for _, port := range service.Endpoint.Ports {
+		if int(port.TargetPort) == targetPort && port.PublishMode == swarm.PortConfigPublishModeIngress {
 			log.Debugf("PublishedPort: %v through %v", port.PublishedPort, port.PublishMode)
-			msg.Service.Port = int(port.PublishedPort)
+			for _, spc := range pubPortInfo {
+				pubPortInfo = append(pubPortInfo, servicePublishConfig{
+					ip: spc.ip,
+					portConfig: swarm.PortConfig{
+						Name:          "",
+						Protocol:      port.Protocol,
+						TargetPort:    port.TargetPort,
+						PublishedPort: port.PublishedPort,
+						PublishMode:   port.PublishMode,
+					},
+				})
+			}
 		}
 	}
 
-	// get hosts running service container
-	nodes, err := p.getNodesRunningService(service.Spec.Name)
-	if err != nil {
-		return msg, err
-	}
-	for _, node := range nodes {
-		addr, err := p.getNodeIP(node)
-		if err != nil {
-			log.Warnf("Error getting node %v info %v", node, err.Error())
+	for _, pm := range pubPortInfo {
+		if pm.portConfig.PublishedPort != 0 {
+			log.Debugf("adding host %v port %v to targets published in %v mode", pm.ip, pm.portConfig.PublishedPort, pm.portConfig.PublishMode)
+			msg.Service.Targets = append(msg.Service.Targets, comm.Target{
+				Host: pm.ip,
+				Port: pm.portConfig.PublishedPort,
+			})
 		}
-		msg.Service.Hosts = append(msg.Service.Hosts, addr)
 	}
 
 	return msg, nil

@@ -25,7 +25,10 @@ func (p *Extension) Start(receive <-chan comm.Message, send chan<- comm.Message)
 	var msg comm.Message
 	msg.Action = "add"
 	msg.Service.Provider = "kubernetes"
-	msg.Service.Hosts = append(msg.Service.Hosts, "192.168.1.1")
+	msg.Service.Targets = append(msg.Service.Targets, comm.Target{
+		Host: "1.2.3.4",
+		Port: 8080,
+	})
 	for {
 		time.Sleep(3 * time.Second)
 		send <- msg

@@ -246,8 +246,7 @@ func (e *workflowEntry) setState(msg comm.Message, wip bool) {
 func (e *workflowEntry) updateService(msg comm.Message) {
 	e.Lock()
 	if strings.HasPrefix(msg.Sender, "provider.") && msg.Action != comm.DeleteAction {
-		e.Service.Port = msg.Service.Port
-		e.Service.Hosts = msg.Service.Hosts
+		e.Service.Targets = msg.Service.Targets
 		e.Service.TLS = msg.Service.TLS
 		e.Service.DNSAliases = msg.Service.DNSAliases
 	}
