@@ -7,10 +7,13 @@ import (
 )
 
 var (
-	svc     Service
-	revMsg  Message
-	fwdMsg  Message
-	diffSvc Service
+	svc             Service
+	revMsg          Message
+	fwdMsg          Message
+	diffSvc         Service
+	target8080      []Target
+	target8081      []Target
+	targetMulti8081 []Target
 )
 
 func TestMain(m *testing.M) {
@@ -20,11 +23,29 @@ func TestMain(m *testing.M) {
 }
 
 func initTests() {
+	target8080 = append(target8080, Target{
+		Host: "10.32.2.2",
+		Port: 8080,
+	})
+
+	target8081 = append(target8081, Target{
+		Host: "10.32.2.2",
+		Port: 8081,
+	})
+
+	targetMulti8081 = append(targetMulti8081, Target{
+		Host: "10.32.2.2",
+		Port: 8081,
+	})
+	targetMulti8081 = append(targetMulti8081, Target{
+		Host: "10.32.2.3",
+		Port: 8081,
+	})
+
 	svc = Service{
 		Provider:   "provider.swarm",
 		Name:       "test",
-		Hosts:      []string{"10.32.2.2"},
-		Port:       8080,
+		Targets:    target8080,
 		TLS:        false,
 		PublicIP:   "10.10.10.10",
 		DNSAliases: []string{"www.test.dom"},
@@ -35,8 +56,7 @@ func initTests() {
 	diffSvc = Service{
 		Provider:   "provider.swarm",
 		Name:       "test",
-		Hosts:      []string{"10.32.2.2"},
-		Port:       8080,
+		Targets:    target8080,
 		TLS:        false,
 		PublicIP:   "10.10.10.10",
 		DNSAliases: []string{"www.test.dom"},
@@ -99,47 +119,33 @@ func TestService_IsSameThan(t *testing.T) {
 		{"dnsDif", svc, Service{
 			Provider:   "provider.swarm",
 			Name:       "test",
-			Hosts:      []string{"10.32.2.2"},
-			Port:       8080,
+			Targets:    target8080,
 			TLS:        false,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test1.dom"},
 			Info:       "",
 			Error:      "",
 		}, false, []string{"DNSNames"}},
-		{"portDiff", svc, Service{
-			Provider:   "provider.swarm",
-			Name:       "test",
-			Hosts:      []string{"10.32.2.2"},
-			Port:       8081,
-			TLS:        false,
-			PublicIP:   "10.10.10.10",
-			DNSAliases: []string{"www.test.dom"},
-			Info:       "",
-			Error:      "",
-		}, false, []string{"Port"}},
 		{"TLS", svc, Service{
 			Provider:   "provider.swarm",
 			Name:       "test",
-			Hosts:      []string{"10.32.2.2"},
-			Port:       8081,
+			Targets:    targetMulti8081,
 			TLS:        true,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test.dom"},
 			Info:       "",
 			Error:      "",
-		}, false, []string{"Port", "TLS"}},
+		}, false, []string{"TLS", "Targets"}},
 		{"Hosts", svc, Service{
 			Provider:   "provider.swarm",
 			Name:       "test",
-			Hosts:      []string{"10.32.2.2", "10.32.2.4"},
-			Port:       8080,
+			Targets:    targetMulti8081,
 			TLS:        false,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test.dom"},
 			Info:       "",
 			Error:      "",
-		}, false, []string{"Hosts"}},
+		}, false, []string{"Targets"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

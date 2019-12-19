@@ -28,8 +28,8 @@ type workflowStep struct {
 }
 
 // initialize the workflow from config
-func initWorkflow(workflowConfig string) {
-
+func initWorkflow(workflowConfig string) workflowSteps {
+	var wf workflowSteps
 	for k, v := range strings.Split(workflowConfig, ",") {
 		var transitionState transition
 
@@ -41,7 +41,7 @@ func initWorkflow(workflowConfig string) {
 			transitionState = &provisionerState{}
 		}
 
-		workflow = append(workflow, workflowStep{
+		wf = append(wf, workflowStep{
 			ID:         k + 1,
 			Name:       v,
 			Transition: transitionState,
@@ -49,19 +49,20 @@ func initWorkflow(workflowConfig string) {
 	}
 
 	// add start and end steps to workflow
-	workflow = append(workflow, workflowStep{
+	wf = append(wf, workflowStep{
 		ID:         0,
 		Name:       undeployedState,
 		Transition: &closeState{},
 	})
 
-	workflow = append(workflow, workflowStep{
-		ID:         len(workflow),
+	wf = append(wf, workflowStep{
+		ID:         len(wf),
 		Name:       deployedState,
 		Transition: &closeState{},
 	})
 
-	log.Infof("workflow initialized %v", workflow)
+	log.Infof("workflow initialized %v", wf)
+	return wf
 
 }
 
@@ -120,7 +121,7 @@ func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep s
 	} else {
 		stepID = stepID + 1
 	}
-
+	found = false
 	for _, step := range w {
 		if step.ID == stepID {
 			nextStep = step.Name
@@ -246,8 +247,7 @@ func (e *workflowEntry) setState(msg comm.Message, wip bool) {
 func (e *workflowEntry) updateService(msg comm.Message) {
 	e.Lock()
 	if strings.HasPrefix(msg.Sender, "provider.") && msg.Action != comm.DeleteAction {
-		e.Service.Port = msg.Service.Port
-		e.Service.Hosts = msg.Service.Hosts
+		e.Service.Targets = msg.Service.Targets
 		e.Service.TLS = msg.Service.TLS
 		e.Service.DNSAliases = msg.Service.DNSAliases
 	}

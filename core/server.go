@@ -76,7 +76,7 @@ func initServer() (server, error) {
 	msgToExtension = make(chan comm.Message)
 
 	// init workflow
-	initWorkflow(s.config.Core.WorkflowSteps)
+	workflow = initWorkflow(s.config.Core.WorkflowSteps)
 
 	// init configured extensions
 	s.initExtensions()

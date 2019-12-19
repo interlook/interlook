@@ -75,8 +75,8 @@ github.com/konsorten/go-windows-terminal-sequences v1.0.1 h1:mweAR1A6xJ3oS2pRaGi
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
 github.com/mattn/go-colorable v0.0.9/go.mod h1:9vuHe8Xs5qXnSaW/c/ABM9alt+Vo+STaOChaDxuIBZU=
 github.com/mattn/go-isatty v0.0.3/go.mod h1:M+lRXTBqGeGNdLjl/ufCoiOlB5xdOkqRJdNxMWT7Zi4=
-github.com/mch1307/go-bigip v0.0.0-20191020211055-fbee9560bc79 h1:XXWzcvbsRUf/IQg8zs5XoSE/NV/SeWeL/+UB0jvK9DM=
-github.com/mch1307/go-bigip v0.0.0-20191020211055-fbee9560bc79/go.mod h1:n+ktcb7pDsPi71Ctl3YEh57U97buMosPyV9AFjsKzmY=
+github.com/mch1307/go-bigip v0.0.0-20191206213651-f622de5c0149 h1:HAldHBGOQm+05pMQKonEd+0ekR0wi+pB9FhEUUSQ844=
+github.com/mch1307/go-bigip v0.0.0-20191206213651-f622de5c0149/go.mod h1:n+ktcb7pDsPi71Ctl3YEh57U97buMosPyV9AFjsKzmY=
 github.com/miekg/dns v1.0.14 h1:9jZdLNd/P4+SfEJ0TNyxYpsK8N4GtfylBLqtbYN1sbA=
 github.com/miekg/dns v1.0.14/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
 github.com/mitchellh/cli v1.0.0/go.mod h1:hNIlj7HEI86fIcpObd7a0FcrxTWetlwJDGcceTlRvqc=

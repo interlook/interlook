@@ -136,15 +136,15 @@ func (k *KempLM) deleteVS(msg comm.Message) error {
 	return nil
 }
 
-func (k *KempLM) isRSDefined(msg comm.Message, host string) (bool, error) {
+func (k *KempLM) isRSDefined(msg comm.Message, target comm.Target) (bool, error) {
 	req, err := k.newVSRequest("/access/showrs", msg)
 	if err != nil {
 		return false, err
 	}
 
 	q := req.URL.Query()
-	q.Add("rsport", strconv.Itoa(msg.Service.Port))
-	q.Add("rs", host)
+	q.Add("rsport", strconv.Itoa(int(target.Port)))
+	q.Add("rs", target.Host)
 
 	req.URL.RawQuery = q.Encode()
 
@@ -209,20 +209,19 @@ func (k *KempLM) addVS(msg comm.Message) error {
 
 	return nil
 }
-
 func (k *KempLM) addRS(msg comm.Message) error {
-	for _, host := range msg.Service.Hosts {
-		rsExists, _ := k.isRSDefined(msg, host)
+	for _, t := range msg.Service.Targets {
+		rsExists, _ := k.isRSDefined(msg, t)
 
 		if !rsExists {
 			req, err := k.newVSRequest("/access/addrs", msg)
 			if err != nil {
 				return err
 			}
-			log.Debugf("rs does not exists for host %v", host)
+			log.Debugf("rs does not exists for t %v", t.Host)
 			q := req.URL.Query()
-			q.Add("rs", host)
-			q.Add("rsport", strconv.Itoa(msg.Service.Port))
+			q.Add("rs", t.Host)
+			q.Add("rsport", strconv.Itoa(int(t.Port)))
 			q.Add("non_local", "1")
 
 			req.URL.RawQuery = q.Encode()

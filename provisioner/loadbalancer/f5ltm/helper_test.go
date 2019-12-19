@@ -74,28 +74,27 @@ func TestBigIP_poolMembersNeedsUpdate(t *testing.T) {
 		{"needUpdate", &f5, args{&bigip.Pool{FullPath: "~interlook~test"},
 			comm.Message{Service: comm.Service{
 				Name:       "test",
-				Port:       30001,
+				Targets:    targetUpdate,
 				DNSAliases: []string{"test.caas.csnet.me"},
-				Hosts:      []string{"10.32.2.2", "10.32.2.30"},
 				TLS:        false,
 			}}}, true, false,
 		},
 		{"noUpdate", &f5, args{&bigip.Pool{FullPath: "~interlook~test"},
 			comm.Message{Service: comm.Service{
 				Name:       "test",
-				Port:       30001,
+				Targets:    targetOK,
 				DNSAliases: []string{"test.caas.csnet.me"},
-				Hosts:      []string{"10.32.2.2", "10.32.2.3"},
-				TLS:        false,
+
+				TLS: false,
 			}}}, false, false,
 		},
 		{"error", &f5, args{&bigip.Pool{FullPath: "~interlook~notfound"},
 			comm.Message{Service: comm.Service{
 				Name:       "test",
-				Port:       30001,
+				Targets:    targetOK,
 				DNSAliases: []string{"test.caas.csnet.me"},
-				Hosts:      []string{"10.32.2.2", "10.32.2.3"},
-				TLS:        false,
+
+				TLS: false,
 			}}}, false, true,
 		},
 	}
