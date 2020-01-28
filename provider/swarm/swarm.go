@@ -142,7 +142,7 @@ func (p *Provider) poll() {
 		msg, err := p.buildMessageFromService(service)
 		log.Debugf("swarm message %v", msg)
 		if err != nil {
-			log.Debugf("Error building message for service %v %v", service.Spec.Name, err.Error())
+			log.Warnf("Error building message for service %v %v", service.Spec.Name, err.Error())
 			continue
 		}
 
