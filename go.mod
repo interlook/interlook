@@ -10,10 +10,10 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/fatih/structs v1.1.0
-	github.com/gogo/protobuf v1.2.1 // indirect
-	github.com/google/go-cmp v0.2.0 // indirect
+	github.com/googleapis/gnostic v0.4.0 // indirect
 	github.com/gorilla/mux v1.7.1 // indirect
 	github.com/hashicorp/consul/api v1.2.0
+	github.com/imdario/mergo v0.3.8 // indirect
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
@@ -21,11 +21,14 @@ require (
 	github.com/scottdware/go-bigip v0.0.0-00010101000000-000000000000
 
 	github.com/sirupsen/logrus v1.4.2
-	golang.org/x/net v0.0.0-20190921015927-1a5e07d1ff72
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
+	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
 	google.golang.org/grpc v1.19.1 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20190905181640-827449938966
 	gotest.tools v2.2.0+incompatible // indirect
+	k8s.io/api v0.17.2
+	k8s.io/apimachinery v0.17.2
+	k8s.io/client-go v0.17.2
+	k8s.io/utils v0.0.0-20200124190032-861946025e34 // indirect
 )
 
 replace (
