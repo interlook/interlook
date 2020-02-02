@@ -1,9 +1,12 @@
 package kubernetes
 
 import (
+	"fmt"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/interlook/interlook/comm"
 	v1 "k8s.io/api/core/v1"
+
+	"k8s.io/client-go/rest"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,7 +15,7 @@ import (
 	"github.com/interlook/interlook/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	//"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -134,12 +137,17 @@ func (p *Extension) RefreshService(msg comm.Message) {}
 
 func (p *Extension) connect() (*kubernetes.Clientset, error) {
 
-	config, err := clientcmd.BuildConfigFromFlags("", p.KubeconfigFile)
-	if err != nil {
-		panic(err.Error())
+	config := rest.Config{
+		Host: p.Endpoint,
+		TLSClientConfig: rest.TLSClientConfig{
+			Insecure: false,
+			CertFile: p.TLSCert,
+			KeyFile:  p.TLSKey,
+			CAFile:   p.TLSCa,
+		},
+		UserAgent: "interlook",
 	}
-
-	return kubernetes.NewForConfig(config)
+	return kubernetes.NewForConfig(&config)
 
 }
 
@@ -157,17 +165,30 @@ func (p *Extension) buildMessageFromService(service v1.Service) (msg comm.Messag
 		}}
 
 	for _, port := range service.Spec.Ports {
-		if port.TargetPort.StrVal == service.Labels[portLabel] {
+		if strconv.Itoa(int(port.Port)) == service.Labels[portLabel] {
 			targetPort = port.NodePort
 		}
 	}
+	if len(service.Spec.Selector) > 0 {
+		var labelSelect []string
+		for k, v := range service.Spec.Selector {
+			labelSelect = append(labelSelect, fmt.Sprintf("%v=%v", k, v))
+		}
 
-	var targets []comm.Target
-	targets = append(targets, comm.Target{
-		Host: "kwrk1.csnet.me",
-		Port: uint32(targetPort),
-	})
-	msg.Service.Targets = targets
+		pods, err := p.cli.CoreV1().Pods("").List(metav1.ListOptions{LabelSelector: strings.Join(labelSelect, ",")})
+		if err != nil {
+			log.Warnf("error getting pods: %v", err.Error())
+		}
+
+		var targets []comm.Target
+		for _, pod := range pods.Items {
+			targets = append(targets, comm.Target{
+				Host: pod.Status.HostIP,
+				Port: uint32(targetPort),
+			})
+			msg.Service.Targets = targets
+		}
+	}
 
 	return msg, nil
 }
