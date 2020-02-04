@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/interlook/interlook/comm"
+	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 
 	"k8s.io/client-go/rest"
@@ -23,7 +24,6 @@ const (
 	portLabel     = "interlook.port"
 	sslLabel      = "interlook.ssl"
 	extensionName = "provider.kubernetes"
-	runningState  = "running"
 )
 
 // Extension holds the Kubernetes provider configuration
@@ -122,18 +122,35 @@ func (p *Extension) poll() {
 	}
 	for _, svc := range sl.Items {
 		if svc.Spec.Type == v1.ServiceTypeNodePort {
-			msg, err := p.buildMessageFromService(svc)
+			msg, err := p.buildMessageFromService(&svc)
 			if err != nil {
 				log.Warnf("error building message for service %v %v", svc.Name, err.Error())
 			}
-
 			p.send <- msg
 		}
 	}
-
 }
 
-func (p *Extension) RefreshService(msg comm.Message) {}
+func (p *Extension) RefreshService(msg comm.Message) {
+	var (
+		res comm.Message
+		err error
+	)
+	if svc, ok := p.getServiceByName(msg.Service.Name); !ok {
+		res, err = p.buildMessageFromService(svc)
+		if err != nil {
+			log.Errorf("Error building delete message for %v: %v", msg.Service.Name, err.Error())
+		}
+		if res.Service.Name == "" || len(res.Service.Targets) == 0 {
+			log.Debugf("k8s service %v not found, send delete", msg.Service.Name)
+			res = p.buildDeleteMessage(msg.Service.Name)
+		}
+	} else {
+		res = p.buildDeleteMessage(msg.Service.Name)
+	}
+
+	p.send <- res
+}
 
 func (p *Extension) connect() (*kubernetes.Clientset, error) {
 
@@ -151,7 +168,7 @@ func (p *Extension) connect() (*kubernetes.Clientset, error) {
 
 }
 
-func (p *Extension) buildMessageFromService(service v1.Service) (msg comm.Message, err error) {
+func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Message, err error) {
 	var targetPort int32
 	tlsService, _ := strconv.ParseBool(service.Labels[sslLabel])
 
@@ -180,6 +197,10 @@ func (p *Extension) buildMessageFromService(service v1.Service) (msg comm.Messag
 			log.Warnf("error getting pods: %v", err.Error())
 		}
 
+		if len(pods.Items) == 0 {
+			return msg, errors.New("no pod found for service " + service.Name)
+		}
+
 		var targets []comm.Target
 		for _, pod := range pods.Items {
 			targets = append(targets, comm.Target{
@@ -191,4 +212,26 @@ func (p *Extension) buildMessageFromService(service v1.Service) (msg comm.Messag
 	}
 
 	return msg, nil
+}
+
+func (p *Extension) buildDeleteMessage(svcName string) comm.Message {
+	msg := comm.Message{
+		Action: comm.DeleteAction,
+		Service: comm.Service{
+			Name: svcName,
+		}}
+
+	return msg
+}
+
+func (p *Extension) getServiceByName(svcName string) (*v1.Service, bool) {
+
+	svc, err := p.cli.CoreV1().Services("").Get(svcName, metav1.GetOptions{})
+	if err != nil {
+		return nil, false
+	}
+	if svc.Name == "" {
+		return svc, false
+	}
+	return svc, true
 }
