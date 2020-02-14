@@ -119,7 +119,9 @@ func (p *Extension) poll() {
 	sl, err := p.cli.CoreV1().Services("").List(p.listOptions)
 	if err != nil {
 		log.Error(err.Error())
+		return
 	}
+
 	for _, svc := range sl.Items {
 		if svc.Spec.Type == v1.ServiceTypeNodePort {
 			msg, err := p.buildMessageFromService(&svc)
@@ -140,6 +142,7 @@ func (p *Extension) RefreshService(msg comm.Message) {
 		res, err = p.buildMessageFromService(svc)
 		if err != nil {
 			log.Errorf("Error building delete message for %v: %v", msg.Service.Name, err.Error())
+			return
 		}
 		if res.Service.Name == "" || len(res.Service.Targets) == 0 {
 			log.Debugf("k8s service %v not found, send delete", msg.Service.Name)
@@ -165,7 +168,6 @@ func (p *Extension) connect() (*kubernetes.Clientset, error) {
 		UserAgent: "interlook",
 	}
 	return kubernetes.NewForConfig(&config)
-
 }
 
 func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Message, err error) {
@@ -194,7 +196,9 @@ func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Messa
 
 		pods, err := p.cli.CoreV1().Pods("").List(metav1.ListOptions{LabelSelector: strings.Join(labelSelect, ",")})
 		if err != nil {
-			log.Warnf("error getting pods: %v", err.Error())
+			errMsg := fmt.Sprintf("error getting pods: %v", err.Error())
+			log.Error(errMsg)
+			return msg, errors.New(errMsg)
 		}
 
 		if len(pods.Items) == 0 {
