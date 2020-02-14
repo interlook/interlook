@@ -60,11 +60,13 @@ func (f5 *BigIP) buildPoolMembersFromMessage(msg comm.Message) bigip.PoolMembers
 				Name:      node.Name + ":" + strconv.Itoa(int(t.Port)),
 				Address:   node.Address,
 				Partition: node.Partition,
+				Ratio:     t.Weight,
 			})
 		} else {
 			members = append(members, bigip.PoolMember{
 				Name:        t.Host + ":" + strconv.Itoa(int(t.Port)),
 				Address:     t.Host,
+				Ratio:       t.Weight,
 				Partition:   f5.Partition,
 				Monitor:     f5.MonitorName,
 				Description: fmt.Sprintf("Pool Member for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),

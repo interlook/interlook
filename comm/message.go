@@ -2,6 +2,8 @@ package comm
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -25,8 +27,29 @@ type Message struct {
 
 // Target holds the ip and port of service backend
 type Target struct {
-	Host string `json:"host,omitempty"`
-	Port uint32 `json:"port,omitempty"`
+	Host   string `json:"host,omitempty"`
+	Port   uint32 `json:"port,omitempty"`
+	Weight int    `json:"weight,omitempty"`
+}
+
+func (m *Message) SetTargetWeight() {
+	var wt []Target
+	wl := make(map[string]int)
+
+	for _, t := range m.Service.Targets {
+		wl[t.Host+":"+strconv.Itoa(int(t.Port))] += 1
+	}
+
+	for h, w := range wl {
+		hp := strings.Split(h, ":")
+		p, _ := strconv.Atoi(hp[1])
+		wt = append(wt, Target{
+			Host:   hp[0],
+			Port:   uint32(p),
+			Weight: w,
+		})
+	}
+	m.Service.Targets = wt
 }
 
 // BuildMessage returns a message built on service information

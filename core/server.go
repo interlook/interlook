@@ -193,6 +193,7 @@ func (s *server) extensionListener(extension *extensionChannels) {
 		s.coreWG.Add(1)
 		// tag the message with it's sender
 		newMessage.Sender = extension.name
+		newMessage.SetTargetWeight()
 
 		log.Debugf("Received message from %v, sending to message handler", extension.name)
 
