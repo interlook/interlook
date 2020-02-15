@@ -2,7 +2,6 @@ package kubernetes
 
 import (
 	"fmt"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/interlook/interlook/comm"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
@@ -16,7 +15,6 @@ import (
 	"github.com/interlook/interlook/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	//"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -28,24 +26,19 @@ const (
 
 // Extension holds the Kubernetes provider configuration
 type Extension struct {
-	Name             string        `yaml:"name"`
-	Endpoint         string        `yaml:"endpoint"`
-	LabelSelector    []string      `yaml:"listOptions"`
-	KubeconfigFile   string        `yaml:"kubeconfigFile"`
-	TLSCa            string        `yaml:"tlsCa"`
-	TLSCert          string        `yaml:"tlsCert"`
-	TLSKey           string        `yaml:"tlsKey"`
-	PollInterval     time.Duration `yaml:"pollInterval"`
-	pollTicker       *time.Ticker
-	shutdown         chan bool
-	send             chan<- comm.Message
-	services         []string
-	servicesLock     sync.RWMutex
-	cli              *kubernetes.Clientset
-	serviceFilters   filters.Args
-	containerFilters filters.Args
-	waitGroup        sync.WaitGroup
-	listOptions      metav1.ListOptions
+	Name          string        `yaml:"name"`
+	Endpoint      string        `yaml:"endpoint"`
+	LabelSelector []string      `yaml:"listOptions"`
+	TLSCa         string        `yaml:"tlsCa"`
+	TLSCert       string        `yaml:"tlsCert"`
+	TLSKey        string        `yaml:"tlsKey"`
+	PollInterval  time.Duration `yaml:"pollInterval"`
+	pollTicker    *time.Ticker
+	shutdown      chan bool
+	send          chan<- comm.Message
+	cli           kubernetes.Interface
+	waitGroup     sync.WaitGroup
+	listOptions   metav1.ListOptions
 }
 
 func (p *Extension) init() error {
