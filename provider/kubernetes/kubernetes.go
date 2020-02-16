@@ -41,9 +41,7 @@ type Extension struct {
 	listOptions   metav1.ListOptions
 }
 
-func (p *Extension) init() error {
-
-	var err error
+func (p *Extension) init() {
 
 	p.shutdown = make(chan bool)
 	p.pollTicker = time.NewTicker(p.PollInterval)
@@ -56,20 +54,24 @@ func (p *Extension) init() error {
 		p.listOptions.LabelSelector = p.listOptions.LabelSelector + "," + strings.Join(p.LabelSelector, ",")
 	}
 	log.Debugf("label selector: %v", p.listOptions.LabelSelector)
-	p.cli, err = p.connect()
-	if err != nil {
-		return err
-	}
-
-	return nil
-
 }
 
 func (p *Extension) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 	log.Infof("Starting %v on %v\n", p.Name, p.Endpoint)
+	var err error
 	p.send = send
 
-	if err := p.init(); err != nil {
+	p.init()
+
+	if p.cli == nil {
+		p.cli, err = p.connect()
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = p.cli.Discovery().ServerVersion()
+	if err != nil {
 		return err
 	}
 
@@ -100,7 +102,7 @@ func (p *Extension) Start(receive <-chan comm.Message, send chan<- comm.Message)
 }
 
 func (p *Extension) Stop() error {
-	log.Debug("Stopping Swarm provider")
+	log.Debug("Stopping Kubernetes provider")
 	p.shutdown <- true
 	p.waitGroup.Wait()
 
@@ -131,7 +133,7 @@ func (p *Extension) RefreshService(msg comm.Message) {
 		res comm.Message
 		err error
 	)
-	if svc, ok := p.getServiceByName(msg.Service.Name); !ok {
+	if svc, ok := p.getServiceByName(msg.Service.Name); ok {
 		res, err = p.buildMessageFromService(svc)
 		if err != nil {
 			log.Errorf("Error building delete message for %v: %v", msg.Service.Name, err.Error())
@@ -148,7 +150,7 @@ func (p *Extension) RefreshService(msg comm.Message) {
 	p.send <- res
 }
 
-func (p *Extension) connect() (*kubernetes.Clientset, error) {
+func (p *Extension) connect() (kubernetes.Interface, error) {
 
 	config := rest.Config{
 		Host: p.Endpoint,
@@ -227,8 +229,6 @@ func (p *Extension) getServiceByName(svcName string) (*v1.Service, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if svc.Name == "" {
-		return svc, false
-	}
+
 	return svc, true
 }
