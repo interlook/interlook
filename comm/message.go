@@ -75,8 +75,6 @@ type Service struct {
 	TLS        bool     `json:"tls,omitempty"`
 	PublicIP   string   `json:"public_ip,omitempty"`
 	DNSAliases []string `json:"dns_name,omitempty"`
-	Info       string   `json:"info,omitempty"`
-	Error      string   `json:"error,omitempty"`
 }
 
 // IsSameThan compares given service definition received from provider

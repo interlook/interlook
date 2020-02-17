@@ -907,8 +907,6 @@ func TestProvider_RefreshService(t *testing.T) {
 			TLS:        false,
 			PublicIP:   "",
 			DNSAliases: []string{"test.caas.csnet.me"},
-			Info:       "",
-			Error:      "",
 		},
 	}
 
@@ -968,8 +966,6 @@ func TestProvider_SendRefreshRequest(t *testing.T) {
 			TLS:        false,
 			PublicIP:   "",
 			DNSAliases: []string{"test.caas.csnet.me"},
-			Info:       "",
-			Error:      "",
 		},
 	}
 

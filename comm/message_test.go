@@ -49,8 +49,6 @@ func initTests() {
 		TLS:        false,
 		PublicIP:   "10.10.10.10",
 		DNSAliases: []string{"www.test.dom"},
-		Info:       "",
-		Error:      "",
 	}
 
 	fwdMsg = Message{
@@ -109,8 +107,6 @@ func TestService_IsSameThan(t *testing.T) {
 			TLS:        false,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test1.dom"},
-			Info:       "",
-			Error:      "",
 		}, false, []string{"DNSNames"}},
 		{"TLS", svc, Service{
 			Provider:   "provider.swarm",
@@ -119,8 +115,6 @@ func TestService_IsSameThan(t *testing.T) {
 			TLS:        true,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test.dom"},
-			Info:       "",
-			Error:      "",
 		}, false, []string{"TLS", "Targets"}},
 		{"Hosts", svc, Service{
 			Provider:   "provider.swarm",
@@ -129,8 +123,6 @@ func TestService_IsSameThan(t *testing.T) {
 			TLS:        false,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test.dom"},
-			Info:       "",
-			Error:      "",
 		}, false, []string{"Targets"}},
 	}
 	for _, tt := range tests {
@@ -186,8 +178,6 @@ func TestMessage_setTargetWeight(t *testing.T) {
 				TLS:        false,
 				PublicIP:   "",
 				DNSAliases: nil,
-				Info:       "",
-				Error:      "",
 			},
 		},
 			[]Target{
