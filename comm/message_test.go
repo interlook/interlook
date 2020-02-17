@@ -1,6 +1,7 @@
 package comm
 
 import (
+	"github.com/google/go-cmp/cmp"
 	"os"
 	"reflect"
 	"testing"
@@ -212,8 +213,30 @@ func TestMessage_setTargetWeight(t *testing.T) {
 				Service:     tt.fields.Service,
 			}
 			m.SetTargetWeight()
-			if !reflect.DeepEqual(m.Service.Targets, tt.expect) {
-				t.Errorf("IsSameThan() got1 = %v, want %v", m.Service.Targets, tt.expect)
+			if !cmp.Equal(m.Service.Targets, tt.expect) {
+				t.Errorf("Unexpected diff: got = %v, want %v", m.Service.Targets, tt.expect)
+			}
+		})
+	}
+}
+
+func TestBuildDeleteMessage(t *testing.T) {
+
+	type args struct {
+		svcName string
+	}
+	tests := []struct {
+		name string
+		args args
+		want Message
+	}{
+		{"delMe", args{svcName: "del.me"}, Message{Service: Service{Name: "del.me"}, Action: DeleteAction}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			if got := BuildDeleteMessage(tt.args.svcName); !cmp.Equal(got, tt.want) {
+				t.Errorf("buildDeleteMessage() = %v, want %v", got, tt.want)
 			}
 		})
 	}

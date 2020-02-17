@@ -56,6 +56,7 @@ func (p *Extension) init() {
 	log.Debugf("label selector: %v", p.listOptions.LabelSelector)
 }
 
+// Start the kubernetes provider
 func (p *Extension) Start(receive <-chan comm.Message, send chan<- comm.Message) error {
 	log.Infof("Starting %v on %v\n", p.Name, p.Endpoint)
 	var err error
@@ -101,6 +102,7 @@ func (p *Extension) Start(receive <-chan comm.Message, send chan<- comm.Message)
 
 }
 
+// Stop the kubernetes provider
 func (p *Extension) Stop() error {
 	log.Debug("Stopping Kubernetes provider")
 	p.shutdown <- true
@@ -128,6 +130,7 @@ func (p *Extension) poll() {
 	}
 }
 
+// RefreshService sends an updated state for a given service
 func (p *Extension) RefreshService(msg comm.Message) {
 	var (
 		res comm.Message
@@ -141,10 +144,10 @@ func (p *Extension) RefreshService(msg comm.Message) {
 		}
 		if res.Service.Name == "" || len(res.Service.Targets) == 0 {
 			log.Debugf("k8s service %v not found, send delete", msg.Service.Name)
-			res = p.buildDeleteMessage(msg.Service.Name)
+			res = comm.BuildDeleteMessage(msg.Service.Name)
 		}
 	} else {
-		res = p.buildDeleteMessage(msg.Service.Name)
+		res = comm.BuildDeleteMessage(msg.Service.Name)
 	}
 
 	p.send <- res
@@ -211,16 +214,6 @@ func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Messa
 	}
 
 	return msg, nil
-}
-
-func (p *Extension) buildDeleteMessage(svcName string) comm.Message {
-	msg := comm.Message{
-		Action: comm.DeleteAction,
-		Service: comm.Service{
-			Name: svcName,
-		}}
-
-	return msg
 }
 
 func (p *Extension) getServiceByName(svcName string) (*v1.Service, bool) {

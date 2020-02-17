@@ -171,10 +171,10 @@ func (p *Provider) RefreshService(msg comm.Message) {
 
 		if newMsg.Service.Name == "" || len(newMsg.Service.Targets) == 0 {
 			log.Debugf("Swarm service %v not found, send delete", msg.Service.Name)
-			newMsg = p.buildDeleteMessage(msg.Service.Name)
+			newMsg = comm.BuildDeleteMessage(msg.Service.Name)
 		}
 	} else if !ok {
-		newMsg = p.buildDeleteMessage(msg.Service.Name)
+		newMsg = comm.BuildDeleteMessage(msg.Service.Name)
 	}
 
 	p.send <- newMsg
@@ -341,14 +341,4 @@ func (p *Provider) buildMessageFromService(service swarm.Service) (comm.Message,
 	}
 
 	return msg, nil
-}
-
-func (p *Provider) buildDeleteMessage(svcName string) comm.Message {
-	msg := comm.Message{
-		Action: comm.DeleteAction,
-		Service: comm.Service{
-			Name: svcName,
-		}}
-
-	return msg
 }

@@ -103,3 +103,14 @@ func (s *Service) IsSameThan(targetService Service) (bool, []string) {
 	}
 	return true, nil
 }
+
+// BuildDeleteMessage returns a "delete" message for givens service
+func BuildDeleteMessage(svcName string) Message {
+	msg := Message{
+		Action: DeleteAction,
+		Service: Service{
+			Name: svcName,
+		}}
+
+	return msg
+}

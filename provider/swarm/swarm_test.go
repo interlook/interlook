@@ -727,29 +727,6 @@ func mockNodes(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(rsp))
 }
 
-func TestProvider_buildDeleteMessage(t *testing.T) {
-	var pr *Provider
-	type args struct {
-		svcName string
-	}
-	tests := []struct {
-		name string
-		pr   *Provider
-		args args
-		want comm.Message
-	}{
-		{"delMe", pr, args{svcName: "del.me"}, comm.Message{Service: comm.Service{Name: "del.me"}, Action: comm.DeleteAction}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.pr, _, _ = startSwarmProvider()
-			if got := tt.pr.buildDeleteMessage(tt.args.svcName); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("buildDeleteMessage() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_sliceContainString(t *testing.T) {
 	type args struct {
 		s  string
