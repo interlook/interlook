@@ -44,11 +44,13 @@ type Extension struct {
 func (p *Extension) init() {
 
 	p.shutdown = make(chan bool)
-	p.pollTicker = time.NewTicker(p.PollInterval)
 
 	if p.PollInterval == time.Duration(0) {
 		p.PollInterval = 15 * time.Second
 	}
+
+	p.pollTicker = time.NewTicker(p.PollInterval)
+
 	p.listOptions.LabelSelector = hostsLabel + "," + portLabel
 	if len(p.LabelSelector) > 0 {
 		p.listOptions.LabelSelector = p.listOptions.LabelSelector + "," + strings.Join(p.LabelSelector, ",")
@@ -139,14 +141,13 @@ func (p *Extension) RefreshService(msg comm.Message) {
 	if svc, ok := p.getServiceByName(msg.Service.Name); ok {
 		res, err = p.buildMessageFromService(svc)
 		if err != nil {
-			log.Errorf("Error building delete message for %v: %v", msg.Service.Name, err.Error())
-			return
+			errMsg := fmt.Sprintf("Error building message for %v: %v", msg.Service.Name, err.Error())
+			log.Errorf(errMsg)
+			res.Error = errMsg
 		}
-		if res.Service.Name == "" || len(res.Service.Targets) == 0 {
-			log.Debugf("k8s service %v not found, send delete", msg.Service.Name)
-			res = comm.BuildDeleteMessage(msg.Service.Name)
-		}
+
 	} else {
+		log.Infof("k8s service %v not found, send delete", msg.Service.Name)
 		res = comm.BuildDeleteMessage(msg.Service.Name)
 	}
 
