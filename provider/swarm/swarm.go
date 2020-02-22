@@ -30,6 +30,12 @@ type servicePublishConfig struct {
 	portConfig swarm.PortConfig
 }
 
+type dockerCliInterface interface {
+	ServiceList(ctx context.Context, options types.ServiceListOptions) ([]swarm.Service, error)
+	TaskList(ctx context.Context, options types.TaskListOptions) ([]swarm.Task, error)
+	NodeList(ctx context.Context, options types.NodeListOptions) ([]swarm.Node, error)
+}
+
 // Provider holds the provider configuration
 type Provider struct {
 	Endpoint               string        `yaml:"endpoint"`
@@ -44,7 +50,7 @@ type Provider struct {
 	send                   chan<- comm.Message
 	services               []string
 	servicesLock           sync.RWMutex
-	cli                    *client.Client
+	cli                    dockerCliInterface
 	serviceFilters         filters.Args
 	containerFilters       filters.Args
 	waitGroup              sync.WaitGroup
@@ -70,15 +76,22 @@ func (p *Provider) init() error {
 	p.serviceFilters.Add("label", hostsLabel)
 	p.serviceFilters.Add("label", portLabel)
 
+	if p.cli == nil {
+		if err = p.setCli(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *Provider) setCli() (err error) {
 	p.cli, err = client.NewClientWithOpts(client.WithTLSClientConfig(p.TLSCa, p.TLSCert, p.TLSKey),
 		client.WithHost(p.Endpoint),
 		client.WithVersion("1.29"),
 		client.WithHTTPHeaders(map[string]string{"User-Agent": "interlook"}))
-
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -164,7 +177,6 @@ func (p *Provider) RefreshService(msg comm.Message) {
 
 	if service, ok := p.getServiceByName(msg.Service.Name); ok {
 		newMsg, err = p.buildMessageFromService(service)
-
 		if err != nil {
 			log.Errorf("Error building message for %v: %v", msg.Service.Name, err)
 		}
