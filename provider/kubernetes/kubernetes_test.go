@@ -1,10 +1,11 @@
 package kubernetes
 
 import (
-	"fmt"
 	"github.com/interlook/interlook/comm"
+	"github.com/interlook/interlook/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	testclient "k8s.io/client-go/kubernetes/fake"
 	"os"
 	"reflect"
@@ -127,9 +128,15 @@ func (p *Extension) startTestK8s() (rec, send chan comm.Message) {
 	p.init()
 	rec = make(chan comm.Message)
 	send = make(chan comm.Message)
-	go p.Start(rec, send)
-	//TODO: find better way...
-	time.Sleep(1 * time.Second)
+
+	go func() {
+		err := p.Start(rec, send)
+		if err != nil {
+			log.Errorf("could not start fake provider: %v", err.Error())
+		}
+	}()
+	// sleep so that provider is ready to receive data on channel
+	time.Sleep(300 * time.Millisecond)
 	return rec, send
 }
 
@@ -149,9 +156,6 @@ func TestExtension_getServiceByName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			pod, _ := tt.k8s.cli.CoreV1().Pods("").List(metav1.ListOptions{})
-			fmt.Println(pod)
 			got, ok := tt.k8s.getServiceByName(tt.svc)
 			if ok != tt.want {
 				t.Errorf("getServiceByName() got = %v, want %v", got, tt.want)
@@ -300,6 +304,47 @@ func TestExtension_Poll(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) && !tt.wantErr {
 				t.Errorf("Msg = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtension_Start(t *testing.T) {
+	type fields struct {
+		Name          string
+		Endpoint      string
+		LabelSelector []string
+		TLSCa         string
+		TLSCert       string
+		TLSKey        string
+		PollInterval  time.Duration
+		pollTicker    *time.Ticker
+		shutdown      chan bool
+		send          chan<- comm.Message
+		cli           kubernetes.Interface
+		waitGroup     sync.WaitGroup
+		listOptions   metav1.ListOptions
+	}
+	type args struct {
+		receive <-chan comm.Message
+		send    chan<- comm.Message
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{"connectErr", fields{}, args{
+			receive: make(chan comm.Message),
+			send:    make(chan comm.Message),
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Extension{}
+			if err := p.Start(tt.args.receive, tt.args.send); (err != nil) != tt.wantErr {
+				t.Errorf("Start() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
