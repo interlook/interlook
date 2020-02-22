@@ -1,6 +1,7 @@
 package comm
 
 import (
+	"github.com/google/go-cmp/cmp"
 	"os"
 	"reflect"
 	"testing"
@@ -10,7 +11,6 @@ var (
 	svc             Service
 	revMsg          Message
 	fwdMsg          Message
-	diffSvc         Service
 	target8080      []Target
 	target8081      []Target
 	targetMulti8081 []Target
@@ -49,19 +49,6 @@ func initTests() {
 		TLS:        false,
 		PublicIP:   "10.10.10.10",
 		DNSAliases: []string{"www.test.dom"},
-		Info:       "",
-		Error:      "",
-	}
-
-	diffSvc = Service{
-		Provider:   "provider.swarm",
-		Name:       "test",
-		Targets:    target8080,
-		TLS:        false,
-		PublicIP:   "10.10.10.10",
-		DNSAliases: []string{"www.test.dom"},
-		Info:       "",
-		Error:      "",
 	}
 
 	fwdMsg = Message{
@@ -105,9 +92,6 @@ func TestBuildMessage(t *testing.T) {
 
 func TestService_IsSameThan(t *testing.T) {
 
-	type args struct {
-		targetService Service
-	}
 	tests := []struct {
 		name   string
 		svc    Service
@@ -123,8 +107,6 @@ func TestService_IsSameThan(t *testing.T) {
 			TLS:        false,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test1.dom"},
-			Info:       "",
-			Error:      "",
 		}, false, []string{"DNSNames"}},
 		{"TLS", svc, Service{
 			Provider:   "provider.swarm",
@@ -133,8 +115,6 @@ func TestService_IsSameThan(t *testing.T) {
 			TLS:        true,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test.dom"},
-			Info:       "",
-			Error:      "",
 		}, false, []string{"TLS", "Targets"}},
 		{"Hosts", svc, Service{
 			Provider:   "provider.swarm",
@@ -143,8 +123,6 @@ func TestService_IsSameThan(t *testing.T) {
 			TLS:        false,
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test.dom"},
-			Info:       "",
-			Error:      "",
 		}, false, []string{"Targets"}},
 	}
 	for _, tt := range tests {
@@ -156,6 +134,99 @@ func TestService_IsSameThan(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
 				t.Errorf("IsSameThan() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func TestMessage_setTargetWeight(t *testing.T) {
+	type fields struct {
+		Action      string
+		Sender      string
+		Destination string
+		Error       string
+		Service     Service
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		expect []Target
+	}{
+		{"simple", fields{
+			Action:      "Add",
+			Sender:      "dummy",
+			Destination: "dmmy",
+			Error:       "",
+			Service: Service{
+				Provider: "dummy",
+				Name:     "dummy",
+				Targets: []Target{{
+					Host:   "a",
+					Port:   8080,
+					Weight: 0,
+				},
+					{
+						Host:   "a",
+						Port:   8080,
+						Weight: 0,
+					},
+					{
+						Host:   "b",
+						Port:   8080,
+						Weight: 0,
+					}},
+				TLS:        false,
+				PublicIP:   "",
+				DNSAliases: nil,
+			},
+		},
+			[]Target{
+				{
+					Host:   "a",
+					Port:   8080,
+					Weight: 2,
+				},
+				{
+					Host:   "b",
+					Port:   8080,
+					Weight: 1,
+				},
+			}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Message{
+				Action:      tt.fields.Action,
+				Sender:      tt.fields.Sender,
+				Destination: tt.fields.Destination,
+				Error:       tt.fields.Error,
+				Service:     tt.fields.Service,
+			}
+			m.SetTargetWeight()
+			if !cmp.Equal(m.Service.Targets, tt.expect) {
+				t.Errorf("Unexpected diff: got = %v, want %v", m.Service.Targets, tt.expect)
+			}
+		})
+	}
+}
+
+func TestBuildDeleteMessage(t *testing.T) {
+
+	type args struct {
+		svcName string
+	}
+	tests := []struct {
+		name string
+		args args
+		want Message
+	}{
+		{"delMe", args{svcName: "del.me"}, Message{Service: Service{Name: "del.me"}, Action: DeleteAction}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			if got := BuildDeleteMessage(tt.args.svcName); !cmp.Equal(got, tt.want) {
+				t.Errorf("buildDeleteMessage() = %v, want %v", got, tt.want)
 			}
 		})
 	}
