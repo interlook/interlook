@@ -155,7 +155,7 @@ func TestMessage_setTargetWeight(t *testing.T) {
 		{"simple", fields{
 			Action:      "Add",
 			Sender:      "dummy",
-			Destination: "dmmy",
+			Destination: "dummy",
 			Error:       "",
 			Service: Service{
 				Provider: "dummy",
@@ -203,9 +203,18 @@ func TestMessage_setTargetWeight(t *testing.T) {
 				Service:     tt.fields.Service,
 			}
 			m.SetTargetWeight()
-			if !cmp.Equal(m.Service.Targets, tt.expect) {
-				t.Errorf("Unexpected diff: got = %v, want %v", m.Service.Targets, tt.expect)
+			for _, gt := range m.Service.Targets {
+				eq := false
+				for _, et := range tt.expect {
+					if gt.Host == et.Host && gt.Port == et.Port && gt.Weight == et.Weight {
+						eq = true
+					}
+				}
+				if !eq {
+					t.Errorf("Unexpected diff: got = %v, want %v", m.Service.Targets, tt.expect)
+				}
 			}
+
 		})
 	}
 }

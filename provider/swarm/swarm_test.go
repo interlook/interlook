@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
 	"net/http"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -334,7 +336,6 @@ func TestProvider_getServiceByName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			//tt.pr, _, _ = startFakeProvider()
 			if got, _ := tt.pr.getServiceByName(tt.args.svcName); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getServiceByName() = %v, want %v", got, tt.want)
 			}
@@ -358,7 +359,6 @@ func TestProvider_getNodeIP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			//tt.sp, _, _ = startFakeProvider()
 			gotIP, err := tt.sp.getNodeIP(tt.args.nodeID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getNodeIP() error = %v, wantErr %v", err, tt.wantErr)
@@ -391,7 +391,6 @@ func TestProvider_getNodesRunningService(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// tt.sp, _, _ = startFakeProvider()
 			gotNodeList, err := tt.sp.getTaskPublishInfo(tt.args.svcName)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getNodesRunningService() error = %v, wantErr %v", err, tt.wantErr)
@@ -420,7 +419,6 @@ func TestProvider_buildMessageFromService(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			//tt.sp, _, _ = startFakeProvider()
 			got, err := tt.sp.buildMessageFromService(tt.args.service)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("buildMessageFromService() error = %v, wantErr %v", err, tt.wantErr)
@@ -528,6 +526,8 @@ func TestProvider_SendRefreshRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.sp.PollInterval = 3 * time.Second
+			tt.sp.LabelSelector = []string{"l7aas"}
+			tt.sp.init()
 			rec, send = tt.sp.startFakeProvider()
 			//go tt.sp.RefreshService(tt.args.msg)
 			rec <- tt.args.msg
@@ -556,10 +556,62 @@ func TestProvider_poll(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.pr.PollInterval = 1 * time.Second
 			_, send = tt.pr.startFakeProvider()
-			go tt.pr.poll()
 			got := <-send
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Msg = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProvider_setCli(t *testing.T) {
+	type fields struct {
+		Endpoint               string
+		LabelSelector          []string
+		TLSCa                  string
+		TLSCert                string
+		TLSKey                 string
+		PollInterval           time.Duration
+		DefaultPortPublishMode string
+		pollTicker             *time.Ticker
+		shutdown               chan bool
+		send                   chan<- comm.Message
+		services               []string
+		servicesLock           sync.RWMutex
+		cli                    dockerCliInterface
+		serviceFilters         filters.Args
+		containerFilters       filters.Args
+		waitGroup              sync.WaitGroup
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		wantErr bool
+	}{
+		{"testErr", fields{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Provider{
+				Endpoint:               tt.fields.Endpoint,
+				LabelSelector:          tt.fields.LabelSelector,
+				TLSCa:                  tt.fields.TLSCa,
+				TLSCert:                tt.fields.TLSCert,
+				TLSKey:                 tt.fields.TLSKey,
+				PollInterval:           tt.fields.PollInterval,
+				DefaultPortPublishMode: tt.fields.DefaultPortPublishMode,
+				pollTicker:             tt.fields.pollTicker,
+				shutdown:               tt.fields.shutdown,
+				send:                   tt.fields.send,
+				services:               tt.fields.services,
+				servicesLock:           tt.fields.servicesLock,
+				cli:                    tt.fields.cli,
+				serviceFilters:         tt.fields.serviceFilters,
+				containerFilters:       tt.fields.containerFilters,
+				waitGroup:              tt.fields.waitGroup,
+			}
+			if err := p.setCli(); (err != nil) != tt.wantErr {
+				t.Errorf("setCli() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
