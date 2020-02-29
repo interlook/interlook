@@ -22,6 +22,28 @@ const (
 	policyUpdateMode         = "policy"
 )
 
+type f5Cli interface {
+	AddPool(config *bigip.Pool) error
+	AddRuleToPolicy(policyName string, rule bigip.PolicyRule) error
+	AddVirtualServer(config *bigip.VirtualServer) error
+	CreateDraftFromPolicy(name string) error
+	DeletePolicy(name string) error
+	DeletePool(name string) error
+	DeleteVirtualServer(name string) error
+	GetPolicy(name string) (*bigip.Policy, error)
+	GetPool(name string) (*bigip.Pool, error)
+	GetVirtualServer(name string) (*bigip.VirtualServer, error)
+	ModifyPolicyRule(policyName, ruleName string, rule bigip.PolicyRule) error
+	ModifyPool(name string, config *bigip.Pool) error
+	ModifyVirtualServer(name string, config *bigip.VirtualServer) error
+	Nodes() (*bigip.Nodes, error)
+	PoolMembers(name string) (*bigip.PoolMembers, error)
+	PublishDraftPolicy(name string) error
+	RefreshTokenSession(interval time.Duration) error
+	RemoveRuleFromPolicy(ruleName, policyName string) error
+	UpdatePoolMembers(pool string, pm *[]bigip.PoolMember) error
+}
+
 type BigIP struct {
 	Endpoint                string `yaml:"httpEndpoint"`
 	User                    string `yaml:"username"`
@@ -36,19 +58,11 @@ type BigIP struct {
 	GlobalHTTPPolicy        string `yaml:"globalHTTPPolicy"`
 	GlobalSSLPolicy         string `yaml:"globalSSLPolicy"`
 	ObjectDescriptionSuffix string `yaml:"objectDescriptionSuffix"`
-	//CliProxy                string `yaml:"proxy"`
-	cli      *bigip.BigIP
-	shutdown chan bool
-	send     chan<- comm.Message
-	wg       sync.WaitGroup
+	cli                     f5Cli
+	shutdown                chan bool
+	send                    chan<- comm.Message
+	wg                      sync.WaitGroup
 }
-
-/*func (f5 *BigIP) getCliConfigOptions() *bigip.ConfigOptions {
-	if f5.CliProxy != "" {
-		return &bigip.ConfigOptions{Proxy: f5.CliProxy}
-	}
-	return nil
-}*/
 
 func (f5 *BigIP) initialize() error {
 
@@ -71,15 +85,26 @@ func (f5 *BigIP) initialize() error {
 		f5.ObjectDescriptionSuffix = defaultDescriptionSuffix
 	}
 
+	if f5.cli == nil {
+		if err := f5.setCli(); err != nil {
+			return err
+		}
+	}
+
+	f5.shutdown = make(chan bool)
+	return nil
+}
+
+func (f5 *BigIP) setCli() error {
 	var err error
 	f5.cli, err = bigip.NewTokenSession(f5.Endpoint, f5.User, f5.Password, f5.AuthProvider, nil)
 	if err != nil {
 		log.Errorf("Could not establish connection to f5 %v", err.Error())
 		return err
 	}
+
 	log.Info("initial f5 connection established")
 
-	f5.shutdown = make(chan bool)
 	return nil
 }
 
@@ -105,7 +130,6 @@ func (f5 *BigIP) Start(receive <-chan comm.Message, send chan<- comm.Message) er
 			f5.wg.Add(1)
 
 			// "renew" connection
-			//f5.cli, _ = bigip.NewTokenSession(f5.Endpoint, f5.User, f5.Password, f5.AuthProvider, nil)
 			_ = f5.cli.RefreshTokenSession(10 * time.Minute)
 			switch msg.Action {
 			case comm.AddAction, comm.UpdateAction:

@@ -5,7 +5,6 @@ import (
 	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/log"
 	"github.com/pkg/errors"
-
 	"github.com/scottdware/go-bigip"
 	"reflect"
 	"strconv"
@@ -57,10 +56,12 @@ func (f5 *BigIP) buildPoolMembersFromMessage(msg comm.Message) bigip.PoolMembers
 	for _, t := range msg.Service.Targets {
 		if node, ok := f5.getNodeByAddress(t.Host); ok {
 			members = append(members, bigip.PoolMember{
-				Name:      node.Name + ":" + strconv.Itoa(int(t.Port)),
-				Address:   node.Address,
-				Partition: node.Partition,
-				Ratio:     t.Weight,
+				Name:        node.Name + ":" + strconv.Itoa(int(t.Port)),
+				Address:     node.Address,
+				Partition:   node.Partition,
+				Ratio:       t.Weight,
+				Monitor:     f5.MonitorName,
+				Description: fmt.Sprintf("Pool Member for %v %v", msg.Service.Name, f5.ObjectDescriptionSuffix),
 			})
 		} else {
 			members = append(members, bigip.PoolMember{
@@ -177,8 +178,9 @@ func (f5 *BigIP) poolMembersNeedsUpdate(pool *bigip.Pool, msg comm.Message) (boo
 			return false, errors.New(fmt.Sprintf("Could not convert Pool member port %v %v", member.FullPath, err.Error()))
 		}
 		targets = append(targets, comm.Target{
-			Host: member.Address,
-			Port: uint32(port),
+			Host:   member.Address,
+			Port:   uint32(port),
+			Weight: member.Ratio,
 		})
 
 	}
