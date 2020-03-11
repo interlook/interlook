@@ -124,6 +124,15 @@ func TestService_IsSameThan(t *testing.T) {
 			PublicIP:   "10.10.10.10",
 			DNSAliases: []string{"www.test.dom"},
 		}, false, []string{"Targets"}},
+		{"Namespace", svc, Service{
+			Provider:   "provider.swarm",
+			Name:       "test",
+			Namespace:  "default",
+			Targets:    target8080,
+			TLS:        false,
+			PublicIP:   "10.10.10.10",
+			DNSAliases: []string{"www.test.dom"},
+		}, false, []string{"Namespace"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

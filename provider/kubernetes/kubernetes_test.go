@@ -41,8 +41,9 @@ func initTests() *Extension {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "dummyNPSvc",
-			Labels: map[string]string{hostsLabel: "dummy.com", portLabel: "8080", sslLabel: "false", "l7aas": "true"},
+			Name:      "dummyNPSvc",
+			Namespace: "default",
+			Labels:    map[string]string{hostsLabel: "dummy.com", portLabel: "8080", sslLabel: "false", "l7aas": "true"},
 		},
 		Spec: v1.ServiceSpec{
 			Ports: []v1.ServicePort{{Protocol: "TCP",
@@ -59,8 +60,9 @@ func initTests() *Extension {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "dummyNPSvcNoPod",
-			Labels: map[string]string{hostsLabel: "dummynp.com", portLabel: "8080", sslLabel: "false", "l7aas": "true"},
+			Name:      "dummyNPSvcNoPod",
+			Namespace: "default",
+			Labels:    map[string]string{hostsLabel: "dummynp.com", portLabel: "8080", sslLabel: "false", "l7aas": "true"},
 		},
 		Spec: v1.ServiceSpec{
 			Ports: []v1.ServicePort{{Protocol: "TCP",
@@ -111,6 +113,7 @@ func initTests() *Extension {
 
 	msgOK = comm.Message{Service: comm.Service{
 		Name:       "dummyNPSvc",
+		Namespace:  "default",
 		DNSAliases: []string{"dummy.com"},
 		Targets:    targetOK,
 		TLS:        false,
@@ -146,17 +149,18 @@ func TestExtension_getServiceByName(t *testing.T) {
 		svcName string
 	}
 	tests := []struct {
-		name string
-		k8s  *Extension
-		svc  string
-		want bool
+		name      string
+		k8s       *Extension
+		svc       string
+		namespace string
+		want      bool
 	}{
-		{"found", k8s, "dummyNPSvc", true},
-		{"notFound", k8s, "notFound", false},
+		{"found", k8s, "dummyNPSvc", "default", true},
+		{"notFound", k8s, "notFound", "default", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := tt.k8s.getServiceByName(tt.svc)
+			got, ok := tt.k8s.getServiceByName(tt.svc, tt.namespace)
 			if ok != tt.want {
 				t.Errorf("getServiceByName() got = %v, want %v", got, tt.want)
 			}
@@ -180,8 +184,9 @@ func TestExtension_buildMessageFromService(t *testing.T) {
 			Action: "add",
 			Sender: "",
 			Service: comm.Service{
-				Provider: "provider.kubernetes",
-				Name:     "dummyNPSvc",
+				Provider:  "provider.kubernetes",
+				Name:      "dummyNPSvc",
+				Namespace: "default",
 				Targets: []comm.Target{{
 					Host:   "10.32.2.1",
 					Port:   32200,
@@ -225,17 +230,51 @@ func TestExtension_RefreshService(t *testing.T) {
 		wantErr bool
 	}{
 		{"refreshErr", args{msg: comm.Message{
-			Action:  "refresh",
-			Service: comm.Service{Name: "dummyNPSvcNoPod"},
-		}}, comm.Message{}, true},
+			Action: "refresh",
+			Service: comm.Service{Name: "dummyNPSvcNoPod",
+				Namespace: "default"},
+		}}, comm.Message{
+			Action:      "refresh",
+			Sender:      "",
+			Destination: "",
+			Error:       "",
+			Service: comm.Service{
+				Provider:   "kubernetes.provider",
+				Name:       "dummyNPSvcNoPod",
+				Namespace:  "default",
+				Targets:    nil,
+				TLS:        false,
+				PublicIP:   "",
+				DNSAliases: nil,
+			},
+		}, true},
 		{"refreshAdd", args{msg: comm.Message{
-			Action:  "refresh",
-			Service: comm.Service{Name: "dummyNPSvc"},
+			Action:      "refresh",
+			Sender:      "provider.kubernetes",
+			Destination: "",
+			Error:       "",
+			Service: comm.Service{Name: "dummyNPSvc",
+				Namespace: "default"},
 		}}, msgOK, false},
 		{"refreshDel", args{msg: comm.Message{
-			Action:  "refresh",
-			Service: comm.Service{Name: "notfound"},
-		}}, comm.BuildDeleteMessage("notfound"), false},
+			Action: "refresh",
+			Service: comm.Service{
+				Provider:   "kubernetes.provider",
+				Name:       "notfound",
+				Namespace:  "notfound",
+				Targets:    nil,
+				TLS:        false,
+				PublicIP:   "",
+				DNSAliases: nil,
+			},
+		}}, comm.Message{
+			Action: "delete",
+			Service: comm.Service{
+				Provider:  "kubernetes.provider",
+				Name:      "notfound",
+				Namespace: "notfound",
+			},
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -262,9 +301,29 @@ func TestExtension_SendRefreshRequest(t *testing.T) {
 		want comm.Message
 	}{
 		{"refresh", comm.Message{
-			Action:  "refresh",
-			Service: comm.Service{Name: "dummyNPSvc"},
-		}, msgOK},
+			Action: "refresh",
+			Service: comm.Service{Name: "dummyNPSvc",
+				Namespace: "default"},
+		}, comm.Message{
+			Action: comm.AddAction,
+			Service: comm.Service{
+				Provider:  "provider.kubernetes",
+				Name:      "dummyNPSvc",
+				Namespace: "default",
+				Targets: []comm.Target{{
+					Host:   "10.32.2.1",
+					Port:   32200,
+					Weight: 0,
+				},
+					{
+						Host:   "10.32.2.2",
+						Port:   32200,
+						Weight: 0,
+					}},
+				TLS:        false,
+				DNSAliases: []string{"dummy.com"},
+			},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

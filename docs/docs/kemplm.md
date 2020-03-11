@@ -1,6 +1,5 @@
 # Kemp load balancer
 
-
 ## Configuration
 
 ```yaml

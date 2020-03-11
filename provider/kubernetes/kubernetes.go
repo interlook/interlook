@@ -113,9 +113,13 @@ func (p *Extension) Stop() error {
 	return nil
 }
 
+func (p *Extension) listServices() (sl *v1.ServiceList, err error) {
+	return p.cli.CoreV1().Services("").List(p.listOptions)
+}
+
 func (p *Extension) poll() {
 
-	sl, err := p.cli.CoreV1().Services("").List(p.listOptions)
+	sl, err := p.listServices()
 	if err != nil {
 		log.Error(err.Error())
 		return
@@ -125,7 +129,7 @@ func (p *Extension) poll() {
 		if svc.Spec.Type == v1.ServiceTypeNodePort {
 			msg, err := p.buildMessageFromService(&svc)
 			if err != nil {
-				log.Warnf("error building message for service %v %v", svc.Name, err.Error())
+				log.Warnf("error building message for service %v %v", svc.Name+"@"+svc.Namespace, err.Error())
 			}
 			p.send <- msg
 		}
@@ -138,7 +142,8 @@ func (p *Extension) RefreshService(msg comm.Message) {
 		res comm.Message
 		err error
 	)
-	if svc, ok := p.getServiceByName(msg.Service.Name); ok {
+
+	if svc, ok := p.getServiceByName(msg.Service.Name, msg.Service.Namespace); ok {
 		res, err = p.buildMessageFromService(svc)
 		if err != nil {
 			errMsg := fmt.Sprintf("Error building message for %v: %v", msg.Service.Name, err.Error())
@@ -148,7 +153,9 @@ func (p *Extension) RefreshService(msg comm.Message) {
 
 	} else {
 		log.Infof("k8s service %v not found, send delete", msg.Service.Name)
-		res = comm.BuildDeleteMessage(msg.Service.Name)
+		res = msg
+		res.Action = comm.DeleteAction
+		//comm.BuildDeleteMessage(msg.Service.Name)
 	}
 
 	p.send <- res
@@ -177,6 +184,7 @@ func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Messa
 		Action: comm.AddAction,
 		Service: comm.Service{
 			Name:       service.Name,
+			Namespace:  service.Namespace,
 			Provider:   extensionName,
 			DNSAliases: strings.Split(service.Labels[hostsLabel], ","),
 			TLS:        tlsService,
@@ -217,9 +225,9 @@ func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Messa
 	return msg, nil
 }
 
-func (p *Extension) getServiceByName(svcName string) (*v1.Service, bool) {
+func (p *Extension) getServiceByName(svcName, namespace string) (*v1.Service, bool) {
 
-	svc, err := p.cli.CoreV1().Services("").Get(svcName, metav1.GetOptions{})
+	svc, err := p.cli.CoreV1().Services(namespace).Get(svcName, metav1.GetOptions{})
 	if err != nil {
 		return nil, false
 	}

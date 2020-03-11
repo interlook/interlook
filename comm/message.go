@@ -71,6 +71,7 @@ func BuildMessage(service Service, reverse bool) Message {
 type Service struct {
 	Provider   string   `json:"provider,omitempty"`
 	Name       string   `json:"name,omitempty"`
+	Namespace  string   `json:"namespace"`
 	Targets    []Target `json:"targets,omitempty"`
 	TLS        bool     `json:"tls,omitempty"`
 	PublicIP   string   `json:"public_ip,omitempty"`
@@ -94,6 +95,10 @@ func (s *Service) IsSameThan(targetService Service) (bool, []string) {
 
 	if !reflect.DeepEqual(s.Targets, targetService.Targets) {
 		diff = append(diff, "Targets")
+	}
+
+	if !reflect.DeepEqual(s.Namespace, targetService.Namespace) {
+		diff = append(diff, "Namespace")
 	}
 
 	if len(diff) > 0 {

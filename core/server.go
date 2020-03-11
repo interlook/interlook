@@ -19,11 +19,9 @@ import (
 )
 
 var (
-	//	srv        server
-	configFile     string
-	Version        = "dev"
-	workflow       workflowSteps
-	msgToExtension chan comm.Message
+	configFile string
+	Version    = "dev"
+	wfConfig   string
 )
 
 // holds Interlook server config
@@ -40,6 +38,7 @@ type server struct {
 	housekeeperTicker   *time.Ticker
 	housekeeperShutdown chan bool
 	housekeeperWG       sync.WaitGroup
+	msgToExtension      chan comm.Message
 }
 
 // Start initialize server and run it
@@ -73,17 +72,18 @@ func initServer() (server, error) {
 	s.housekeeperShutdown = make(chan bool)
 	s.housekeeperTicker = time.NewTicker(s.config.Core.WorkflowHousekeeperInterval)
 	s.extensionChannels = make(map[string]*extensionChannels)
-	msgToExtension = make(chan comm.Message)
+	s.msgToExtension = make(chan comm.Message)
 
 	// init workflow
-	workflow = initWorkflow(s.config.Core.WorkflowSteps)
+	wfConfig = s.config.Core.WorkflowSteps
+	//workflow = initWorkflow(s.config.Core.workflowSteps)
 
 	// init configured extensions
 	s.initExtensions()
 
 	// init workflowEntries table
-	s.workflowEntries = initWorkflowEntries(s.config.Core.WorkflowEntriesFile)
-	if err := s.workflowEntries.load(); err != nil {
+	s.workflowEntries = newWorkflowEntries(s.config.Core.WorkflowEntriesFile, s.config.Core.WorkflowSteps, s.msgToExtension)
+	if err := s.workflowEntries.load(s.msgToExtension); err != nil {
 		log.Errorf("Could not load entries from file: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func (s *server) initExtensions() {
 	srvConf := structs.New(s.config)
 
 	// get needed extensions from workflow
-	for _, step := range workflow {
+	for _, step := range initWorkflow(wfConfig) {
 		ext := strings.Split(step.Name, ".")
 		if len(ext) == 2 {
 			extType := strings.ToLower(ext[0])
@@ -162,7 +162,7 @@ func (s *server) run() {
 			log.Info("Stopping workflow manager")
 
 			s.housekeeperShutdown <- true
-
+			log.Info("Sent stop signal to housekeeper")
 			for name, extension := range s.extensions {
 				log.Infof("Stopping extension %v", name)
 				if err := extension.Stop(); err != nil {
@@ -198,14 +198,12 @@ func (s *server) extensionListener(extension *extensionChannels) {
 		log.Debugf("Received message from %v, sending to message handler", extension.name)
 
 		// inject message to workflow
-		if err := s.workflowEntries.mergeMessage(newMessage); err != nil {
-			log.Errorf("Error %v when inserting %v to flow\n", err, newMessage.Service.Name)
-		}
+		s.workflowEntries.mergeMessage(newMessage)
 		s.coreWG.Done()
 	}
 }
 
-// housekeeper
+// housekeeper manage the workflow entries list
 func (s *server) housekeeper() {
 	for {
 		select {
@@ -228,7 +226,7 @@ func (s *server) housekeeper() {
 				}
 				// ask refresh to provider
 				if time.Now().Sub(entry.LastUpdate) > s.config.Core.ServiceMaxLastUpdated && entry.State == deployedState {
-					err := s.refreshService(entry.Service.Name)
+					err := s.refreshService(entry.Service.Name, entry.Service.Namespace)
 					if err != nil {
 						log.Errorf("Error sending service refresh to provider %entry", err)
 					}
@@ -247,7 +245,8 @@ func (s *server) housekeeper() {
 	}
 }
 
-func (s *server) refreshService(serviceName string) error {
+// refreshService request information/state of a given service to the provider
+func (s *server) refreshService(serviceName, namespace string) error {
 	log.Infof("Sending refresh request for %v", serviceName)
 	for name, extension := range s.extensions {
 
@@ -256,7 +255,8 @@ func (s *server) refreshService(serviceName string) error {
 			msg := comm.Message{
 				Action: comm.RefreshAction,
 				Service: comm.Service{
-					Name: serviceName,
+					Name:      serviceName,
+					Namespace: namespace,
 				},
 			}
 			log.Debugf("Sending refresh request to %v", name)
@@ -267,9 +267,10 @@ func (s *server) refreshService(serviceName string) error {
 	return errors.New("Could not send refresh message to provider")
 }
 
+// messageSender listen for messages in a go routine
 func (s *server) messageSender() {
 	for {
-		msg := <-msgToExtension
+		msg := <-s.msgToExtension
 		log.Debugf("Forwarding msg %v", msg)
 		s.sendMessageToExtension(msg, msg.Destination)
 	}
@@ -286,7 +287,7 @@ func (s *server) sendMessageToExtension(msg comm.Message, extensionName string) 
 	ext.receive <- msg
 }
 
-// extensionChannels holds the "activated" extensions's channels
+// extensionChannels holds the activated extensions channels
 type extensionChannels struct {
 	name    string
 	receive chan comm.Message

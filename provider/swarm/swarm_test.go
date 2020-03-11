@@ -175,7 +175,7 @@ func (p *Provider) startFakeProvider() (rec, send chan comm.Message) {
 		}
 	}()
 	// sleep so that provider is ready to receive data on channel
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 	return rec, send
 }
 
@@ -481,6 +481,7 @@ func TestProvider_RefreshService(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.sp.PollInterval = 10 * time.Second
 			_, send = tt.sp.startFakeProvider()
+			//time.Sleep(300 *time.Millisecond)
 			go tt.sp.RefreshService(tt.args.msg)
 			got := <-send
 			go tt.sp.Stop()

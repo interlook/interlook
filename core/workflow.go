@@ -17,28 +17,64 @@ const (
 	undeployedState = "undeployed"
 )
 
-// workflow holds the sequence of "steps" an item must follow to be deployed or un-deployed
-
-type workflowSteps []workflowStep
-
+// workflowStep defines a step in the workflow
 type workflowStep struct {
 	ID         int
 	Name       string
-	Transition transition
+	Transition transitioner
+}
+
+type workflowSteps []workflowStep
+
+/*type wfEntryHandler interface {
+    Lock()
+    Unlock()
+}*/
+
+// workflowEntry represents a tracked service
+type workflowEntry struct {
+	sync.Mutex
+	// Indicates if an extension is currently working on the item
+	WorkInProgress bool `json:"work_in_progress,omitempty"`
+	// time the entry was set in WIP (sent to extension)
+	WIPTime time.Time `json:"wip_time"`
+	// Current step as defined in the workflow config
+	State string `json:"step,omitempty"`
+	// Desired service step (deployed or undeployed)
+	ExpectedState string `json:"expected_state,omitempty"`
+	// Additional info
+	Info string `json:"info,omitempty"`
+	// Last encountered Error
+	Error string `json:"error,omitempty"`
+	// First time the service was pushed by the provider
+	TimeDetected time.Time `json:"time_detected,omitempty"`
+	// Last time provider pushed an updated definition of the service
+	LastUpdate time.Time    `json:"last_update,omitempty"`
+	Service    comm.Service `json:"service,omitempty"`
+	CloseTime  time.Time    `json:"close_time"`
+	// direction in the workflow
+	Reverse bool `json:"reverse"`
+	// steps the item must follow in the workflow
+	workflowSteps workflowSteps
+	// current transition step
+	step        transitioner
+	toExtension chan comm.Message
+	// Stores workflow config string
+	WfConfig string `json:"workflow"`
 }
 
 // initialize the workflow from config
 func initWorkflow(workflowConfig string) workflowSteps {
 	var wf workflowSteps
 	for k, v := range strings.Split(workflowConfig, ",") {
-		var transitionState transition
+		var transitionState transitioner
 
 		extType := strings.Split(v, ".")[0]
 
 		if extType == "provider" {
-			transitionState = &providerState{}
+			transitionState = &receivedFromProvider{}
 		} else {
-			transitionState = &provisionerState{}
+			transitionState = &receivedFromProvisioner{}
 		}
 
 		wf = append(wf, workflowStep{
@@ -61,7 +97,7 @@ func initWorkflow(workflowConfig string) workflowSteps {
 		Transition: &closeState{},
 	})
 
-	log.Infof("workflow initialized %v", wf)
+	log.Debugf("workflow initialized %v", wf)
 	return wf
 
 }
@@ -89,7 +125,7 @@ func (w workflowSteps) isLastStep(step string, reverse bool) bool {
 }
 
 // getTransition for the given step
-func (w workflowSteps) getTransition(step string) transition {
+func (w workflowSteps) getTransition(step string) transitioner {
 
 	for _, workflowStep := range w {
 		if workflowStep.Name == step {
@@ -99,9 +135,9 @@ func (w workflowSteps) getTransition(step string) transition {
 	return nil
 }
 
-// getNextStep returns the transition step for a given step
-// set reverse to true to get transition step when undeploying a service
-func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep string, next transition, err error) {
+// getNextStep returns the next step for a given step
+// set reverse to true to get next step when undeploying a service
+func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep string, next transitioner, err error) {
 	found := false
 	var stepID int
 
@@ -142,104 +178,42 @@ func (w workflowSteps) getNextStep(currentStep string, reverse bool) (nextStep s
 	return nextStep, next, nil
 }
 
-// workflowEntry represents a tracked service
-type workflowEntry struct {
-	sync.Mutex
-	// Indicates if an extension is currently working on the item
-	WorkInProgress bool `json:"work_in_progress,omitempty"`
-	// time the entry was set in WIP (sent to extension)
-	WIPTime time.Time `json:"wip_time"`
-	// Current state of the item
-	State string `json:"state,omitempty"`
-	// Desired service state (deployed or undeployed)
-	ExpectedState string `json:"expected_state,omitempty"`
-	// Additional info
-	Info string `json:"info,omitempty"`
-	// Last encountered Error
-	Error string `json:"error,omitempty"`
-	// First time the service was pushed by the provider
-	TimeDetected time.Time `json:"time_detected,omitempty"`
-	// Last time provider pushed an updated definition of the service
-	LastUpdate time.Time    `json:"last_update,omitempty"`
-	Service    comm.Service `json:"service,omitempty"`
-	CloseTime  time.Time    `json:"close_time"`
-	transition transition
-}
-
-func makeNewFlowEntry() *workflowEntry {
-	var ne workflowEntry
-	ne.TimeDetected = time.Now()
-	ne.State = undeployedState
-	ne.ExpectedState = deployedState
-	ne.setNextStep()
-	return &ne
-}
-
-func (e *workflowEntry) setError(err string) {
-	e.Lock()
-	e.Error = err
-	e.Unlock()
-}
-
 func (e *workflowEntry) setWIP(wip bool) {
-	e.Lock()
+
 	if wip {
 		e.WIPTime = time.Now()
 	} else {
 		e.WIPTime = time.Time{}
 	}
 	e.WorkInProgress = wip
-	e.Unlock()
-}
 
-func (e *workflowEntry) setTargetState(state string) {
-	e.Lock()
-	e.ExpectedState = state
-	e.Unlock()
-}
-
-// setLastUpdate to now()
-func (e *workflowEntry) setLastUpdate() {
-	e.Lock()
-	e.LastUpdate = time.Now()
-	e.Unlock()
-}
-
-// setTransition based on given state
-func (e *workflowEntry) setTransition(state string) {
-	e.Lock()
-	e.transition = workflow.getTransition(state)
-	e.Unlock()
 }
 
 // setNextStep in the workflow
 func (e *workflowEntry) setNextStep() {
 
-	nextStep, next, err := workflow.getNextStep(e.State, e.isReverse())
+	nextStep, next, err := e.workflowSteps.getNextStep(e.State, e.isReverse())
 	if err != nil {
-		log.Errorf("Error getting transition step for %v:%v", e.State, err)
+		log.Errorf("Error getting next step for %v:%v", e.State, err)
 		return
 	}
 
 	log.Debugf("#### nextStep for %v is %v", e.State, nextStep)
-	e.Lock()
+
 	e.State = nextStep
-	e.transition = next
+	e.step = next
 	e.WorkInProgress = false
 	e.WIPTime = time.Time{}
 	e.CloseTime = time.Time{}
-	e.Unlock()
 
 }
 
-// setState update flow entry with info from message
+// setState update flow entry with message information
 func (e *workflowEntry) setState(msg comm.Message, wip bool) {
-	e.Lock()
 	e.State = msg.Sender
 	e.WorkInProgress = wip
 	e.Error = msg.Error
 	e.CloseTime = time.Time{}
-	e.Unlock()
 }
 
 // updateService from given message
@@ -255,30 +229,31 @@ func (e *workflowEntry) updateService(msg comm.Message) {
 	if strings.HasPrefix(msg.Sender, "ipam.") {
 		e.Service.PublicIP = msg.Service.PublicIP
 	}
-
+	e.LastUpdate = time.Now()
 	e.Service.Name = msg.Service.Name
+	e.Service.Namespace = msg.Service.Namespace
 	e.Unlock()
 }
 
+// sendToExtension. core.messageSender will forward to the right extension
 func (e *workflowEntry) sendToExtension() {
 	//e.setNextStep()
 	e.setWIP(true)
 	msg := comm.BuildMessage(e.Service, e.isReverse())
 	msg.Destination = e.State
-	msgToExtension <- msg
-
+	e.toExtension <- msg
 }
 
 // close closes the entry workflow
 func (e *workflowEntry) close(errorMessage string) {
+	e.Lock()
+	defer e.Unlock()
 
 	e.setWIP(false)
 
 	if errorMessage != "" {
-		e.setError(errorMessage)
+		e.Error = errorMessage
 	}
-
-	e.Lock()
 
 	if e.isReverse() {
 		e.State = undeployedState
@@ -288,13 +263,11 @@ func (e *workflowEntry) close(errorMessage string) {
 
 	e.CloseTime = time.Now()
 
-	e.Unlock()
-
-	log.Infof("Service %v state %v", e.Service.Name, e.State)
+	log.Infof("Service %v step %v", e.Service.Name, e.State)
 
 }
 
-// isReverse returns true if the target state is undeployed
+// isReverse returns true if the target step is undeployed
 func (e *workflowEntry) isReverse() bool {
 	if e.ExpectedState == undeployedState {
 		return true
@@ -302,12 +275,12 @@ func (e *workflowEntry) isReverse() bool {
 	return false
 }
 
-// isStateAsWanted compares current state with expected state
+// isStateAsWanted compares current step with expected step
 func (e *workflowEntry) isStateAsWanted(action string) bool {
 	if e.ExpectedState == e.State &&
 		((e.State == deployedState && action == comm.AddAction) ||
 			(e.State == undeployedState && action == comm.DeleteAction)) {
-		log.Debug("service state is OK")
+		log.Debug("service step is OK")
 		return true
 	}
 
@@ -317,20 +290,22 @@ func (e *workflowEntry) isStateAsWanted(action string) bool {
 // workflowEntries holds the table of tracked services
 type workflowEntries struct {
 	sync.Mutex
-	Entries map[string]*workflowEntry `json:"entries,omitempty"`
-	DBFile  string
+	Entries        map[string]*workflowEntry `json:"entries,omitempty"`
+	DBFile         string
+	workflowConfig string
+	commChan       chan comm.Message
 }
 
-func initWorkflowEntries(dbFile string) *workflowEntries {
+func newWorkflowEntries(dbFile, workflowConfig string, commChan chan comm.Message) *workflowEntries {
 	fe := new(workflowEntries)
 	fe.Entries = make(map[string]*workflowEntry)
 	fe.DBFile = dbFile
-
+	fe.workflowConfig = workflowConfig
+	fe.commChan = commChan
 	return fe
 }
 
 func (we *workflowEntries) serviceNeedUpdate(msg comm.Message) bool {
-
 	curSvc, ok := we.Entries[msg.Service.Name]
 	if !ok {
 		log.Debugf("Service %v not found ", msg.Service.Name)
@@ -351,12 +326,12 @@ func (we *workflowEntries) serviceNeedUpdate(msg comm.Message) bool {
 }
 
 // mergeMessage by inserting/merging it to the workflow entries list
-func (we *workflowEntries) mergeMessage(msg comm.Message) error {
+func (we *workflowEntries) mergeMessage(msg comm.Message) {
 
 	if !we.serviceNeedUpdate(msg) {
-		log.Debugf("Service %v already in desired state\n", msg.Service.Name)
-		we.Entries[msg.Service.Name].setLastUpdate()
-		return nil
+		log.Debugf("Service %v already in desired step\n", msg.Service.Name)
+		we.Entries[msg.Service.Name].LastUpdate = time.Now()
+		return
 	}
 
 	we.Lock()
@@ -365,16 +340,30 @@ func (we *workflowEntries) mergeMessage(msg comm.Message) error {
 	_, ok := we.Entries[msg.Service.Name]
 	if !ok {
 		log.Debugf("Service not found, creating it %v", msg)
-		we.Entries[msg.Service.Name] = makeNewFlowEntry()
+		we.addEntry(msg.Service.Name)
 	}
 
-	entry, _ := we.Entries[msg.Service.Name]
-	entry.updateService(msg)
-	entry.setTransition(msg.Sender)
+	//entry, _ := we.Entries[msg.Service.Name]
+	we.Entries[msg.Service.Name].updateService(msg)
+	we.Entries[msg.Service.Name].step = we.Entries[msg.Service.Name].workflowSteps.getTransition(msg.Sender)
 
-	go entry.transition.execute(entry, msg)
+	go we.Entries[msg.Service.Name].step.toNext(we.Entries[msg.Service.Name], msg)
 
-	return nil
+	return
+}
+
+func (we *workflowEntries) addEntry(name string) {
+	var e workflowEntry
+
+	e.WfConfig = we.workflowConfig
+	e.workflowSteps = initWorkflow(e.WfConfig)
+	e.toExtension = we.commChan
+	e.TimeDetected = time.Now()
+	e.State = undeployedState
+	e.ExpectedState = deployedState
+	e.setNextStep()
+
+	we.Entries[name] = &e
 }
 
 // save entries list to file
@@ -418,7 +407,7 @@ func (we *workflowEntries) save() error {
 }
 
 // load entries list from file
-func (we *workflowEntries) load() error {
+func (we *workflowEntries) load(extChan chan comm.Message) error {
 	file, err := ioutil.ReadFile(we.DBFile)
 	if err != nil {
 		return err
@@ -426,6 +415,14 @@ func (we *workflowEntries) load() error {
 
 	if err = json.Unmarshal(file, &we.Entries); err != nil {
 		return err
+	}
+
+	for _, e := range we.Entries {
+		e.workflowSteps = initWorkflow(e.WfConfig)
+		e.toExtension = extChan
+		if e.State == deployedState || e.State == undeployedState {
+			e.step = &closeState{}
+		}
 	}
 
 	return nil
