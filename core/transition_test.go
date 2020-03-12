@@ -300,3 +300,46 @@ func listenChan(c chan comm.Message) {
 	m := <-c
 	log.Print(m)
 }
+
+func Test_deleteFromProvider_toNext(t *testing.T) {
+	type args struct {
+		we  *workflowEntry
+		msg comm.Message
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{"NoDelete",
+			args{
+				we: &workflowEntry{
+					Mutex:          sync.Mutex{},
+					ExpectedState:  deployedState,
+					workflowSteps:  initWorkflow("provider.kubernetes"),
+					WfConfig:       "provider.kubernetes",
+					State:          deployedState,
+					WorkInProgress: true,
+				},
+				msg: comm.Message{
+					Action: comm.AddAction,
+					Sender: "provider.kubernetes",
+					Service: comm.Service{
+						Provider:  "provider.kubernetes",
+						Name:      "test",
+						Namespace: "default",
+						Targets:   nil,
+						TLS:       false,
+					},
+				},
+			}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.args.we.step = &deleteFromProvider{}
+			tt.args.we.step.toNext(tt.args.we, tt.args.msg)
+			if tt.args.we.State != deployedState {
+				t.Errorf("got %v, want %v", tt.args.we.State, deployedState)
+			}
+		})
+	}
+}
