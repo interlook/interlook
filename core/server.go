@@ -1,7 +1,6 @@
 package core
 
 import (
-	"flag"
 	"fmt"
 	"github.com/fatih/structs"
 	"github.com/interlook/interlook/comm"
@@ -19,9 +18,8 @@ import (
 )
 
 var (
-	configFile string
-	Version    = "dev"
-	wfConfig   string
+	//    configFile string
+	Version = "dev"
 )
 
 // holds Interlook server config
@@ -42,21 +40,22 @@ type server struct {
 }
 
 // Start initialize server and run it
-func Start() {
-	srv, err := initServer()
+func Start(configFile string) {
+
+	srv, err := initServer(configFile)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("could not start server: %v", err)
 	}
+	// init configured extensions
+	srv.initExtensions()
+	// start server
 	srv.run()
 }
 
 // initialize the server components
-func initServer() (server, error) {
+func initServer(configFile string) (server, error) {
 	var err error
 	var s server
-
-	flag.StringVar(&configFile, "conf", "", "interlook configuration file")
-	flag.Parse()
 
 	s.config, err = config.ReadConfig(configFile)
 	if err != nil {
@@ -74,13 +73,6 @@ func initServer() (server, error) {
 	s.extensionChannels = make(map[string]*extensionChannels)
 	s.msgToExtension = make(chan comm.Message)
 
-	// init workflow
-	wfConfig = s.config.Core.WorkflowSteps
-	//workflow = initWorkflow(s.config.Core.workflowSteps)
-
-	// init configured extensions
-	s.initExtensions()
-
 	// init workflowEntries table
 	s.workflowEntries = newWorkflowEntries(s.config.Core.WorkflowEntriesFile, s.config.Core.WorkflowSteps, s.msgToExtension)
 	if err := s.workflowEntries.load(s.msgToExtension); err != nil {
@@ -96,7 +88,7 @@ func (s *server) initExtensions() {
 	srvConf := structs.New(s.config)
 
 	// get needed extensions from workflow
-	for _, step := range initWorkflow(wfConfig) {
+	for _, step := range initWorkflow(s.config.Core.WorkflowSteps) {
 		ext := strings.Split(step.Name, ".")
 		if len(ext) == 2 {
 			extType := strings.ToLower(ext[0])

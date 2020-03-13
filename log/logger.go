@@ -31,7 +31,6 @@ func Init(file, level string) {
 		if err != nil {
 			log.SetOutput(os.Stdout)
 			log.Warnf("Could not access log file (%v), falling back to STDOUT", err)
-			log.Info("Logger initialized")
 			return
 		}
 		log.SetOutput(f)
@@ -125,17 +124,6 @@ func Errorf(format string, args ...interface{}) {
 		"function": moreInfo.funcName,
 		"line":     moreInfo.line,
 	}).Errorf(format, args...)
-}
-
-// Fatal logs a message at level Fatal on the standard logger.
-func Fatal(args ...interface{}) {
-	moreInfo := retrieveCallInfo()
-	log.WithFields(log.Fields{
-		"filename": moreInfo.fileName,
-		"package":  moreInfo.packageName,
-		"function": moreInfo.funcName,
-		"line":     moreInfo.line,
-	}).Fatalln(args...)
 }
 
 // Fatalf logs a message at level Fatal on the standard logger.
