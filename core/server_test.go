@@ -105,7 +105,7 @@ func Test_server_housekeeperDelete(t *testing.T) {
 		entries  map[string]*workflowEntry
 	}{
 		{"delete",
-			"./test-files/conf-ok.yml",
+			"./test-files/conf-noprovider.yml",
 			10 * time.Millisecond,
 			map[string]*workflowEntry{"test": {
 				Mutex:          sync.Mutex{},
@@ -125,7 +125,7 @@ func Test_server_housekeeperDelete(t *testing.T) {
 				s.workflowEntries.Entries[n] = e
 			}
 			go s.run()
-			time.Sleep(400 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 			s.housekeeperShutdown <- true
 			if len(s.workflowEntries.Entries) != 0 {
 				t.Errorf("expected empty entries list")
@@ -142,7 +142,7 @@ func Test_server_housekeeperClose(t *testing.T) {
 		entries  map[string]*workflowEntry
 	}{
 		{"Close",
-			"./test-files/conf-ok.yml",
+			"./test-files/conf-noprovider.yml",
 			10 * time.Millisecond,
 			map[string]*workflowEntry{"test": {
 				Mutex:          sync.Mutex{},
@@ -163,7 +163,7 @@ func Test_server_housekeeperClose(t *testing.T) {
 				s.workflowEntries.Entries[n] = e
 			}
 			go s.run()
-			time.Sleep(400 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 			s.housekeeperShutdown <- true
 			if len(s.workflowEntries.Entries) == 0 {
 				t.Errorf("expected empty entries list")

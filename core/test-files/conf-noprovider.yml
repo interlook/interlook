@@ -1,0 +1,23 @@
+---
+core:
+    logLevel: DEBUG
+    listenPort: 8080
+    logFile: ./tmp/log.log
+    workflowSteps:
+    workflowEntriesFile: ./_tmp/flowentries.db
+    workflowActivityLauncherInterval: 5s
+    workflowHousekeeperInterval: 10ms
+    serviceWIPTimeout: 3s
+    cleanUndeployedServiceAfter: 1m
+    serviceMaxLastUpdated: 3s
+
+provider:
+    kubernetes:
+        endpoint: https://192.168.39.99:8443
+        kubeconfigFile: /home/michael/.kube/config
+        labelSelector:
+            - l7aas
+        tlsCa: /home/michael/.minikube/ca.crt
+        tlsCert: /home/michael/.minikube/client.crt
+        tlsKey: /home/michael/.minikube/client.key
+        pollInterval: 5s
