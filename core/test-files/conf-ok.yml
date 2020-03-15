@@ -6,7 +6,7 @@ core:
     workflowSteps: provider.kubernetes
     workflowEntriesFile: ./_tmp/flowentries.db
     workflowActivityLauncherInterval: 5s
-    workflowHousekeeperInterval: 10ms
+    workflowHousekeeperInterval: 100ms
     serviceWIPTimeout: 3s
     cleanUndeployedServiceAfter: 1m
     serviceMaxLastUpdated: 3s

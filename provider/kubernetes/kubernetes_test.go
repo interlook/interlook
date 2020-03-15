@@ -121,7 +121,7 @@ func initTests() *Extension {
 	},
 		Action: comm.AddAction}
 
-	k8s.cli = testclient.NewSimpleClientset(&dummyNPSvc, &dummyNPSvcNoPod, dummyPod1, dummyPod2)
+	k8s.Cli = testclient.NewSimpleClientset(&dummyNPSvc, &dummyNPSvcNoPod, dummyPod1, dummyPod2)
 	return &k8s
 
 }

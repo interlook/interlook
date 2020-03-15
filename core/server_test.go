@@ -1,6 +1,7 @@
 package core
 
 import (
+	testclient "k8s.io/client-go/kubernetes/fake"
 	"os"
 	"sync"
 	"testing"
@@ -77,6 +78,7 @@ func Test_initExtensions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, err := initServer(tt.args.configFile)
+			s.config.Provider.Kubernetes.Cli = testclient.NewSimpleClientset()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("initServer() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -142,7 +144,7 @@ func Test_server_housekeeperClose(t *testing.T) {
 		entries  map[string]*workflowEntry
 	}{
 		{"Close",
-			"./test-files/conf-noprovider.yml",
+			"./test-files/conf-ok.yml",
 			10 * time.Millisecond,
 			map[string]*workflowEntry{"test": {
 				Mutex:          sync.Mutex{},
@@ -158,17 +160,62 @@ func Test_server_housekeeperClose(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, _ := initServer(tt.confFile)
+			s.config.Provider.Kubernetes.Cli = testclient.NewSimpleClientset()
 			s.initExtensions()
 			for n, e := range tt.entries {
 				s.workflowEntries.Entries[n] = e
 			}
 			go s.run()
 			time.Sleep(200 * time.Millisecond)
-			s.housekeeperShutdown <- true
+			s.signals <- os.Kill
+			time.Sleep(200 * time.Millisecond)
 			if len(s.workflowEntries.Entries) == 0 {
 				t.Errorf("expected empty entries list")
 			}
 			if s.workflowEntries.Entries["test"].State != undeployedState {
+				t.Errorf("expected close, got %v", s.workflowEntries.Entries["test"].State)
+			}
+		})
+	}
+}
+
+func Test_server_refreshService(t *testing.T) {
+	tests := []struct {
+		name     string
+		confFile string
+		interval time.Duration
+		entries  map[string]*workflowEntry
+	}{
+		{"Close",
+			"./test-files/conf-ok.yml",
+			10 * time.Millisecond,
+			map[string]*workflowEntry{"test": {
+				Mutex:          sync.Mutex{},
+				WorkInProgress: false,
+				WIPTime:        time.Time{},
+				State:          deployedState,
+				ExpectedState:  deployedState,
+				CloseTime:      time.Now().Add(-300 * time.Second),
+				LastUpdate:     time.Now().Add(-300 * time.Second),
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _ := initServer(tt.confFile)
+			s.config.Provider.Kubernetes.Cli = testclient.NewSimpleClientset()
+			s.initExtensions()
+			for n, e := range tt.entries {
+				s.workflowEntries.Entries[n] = e
+			}
+			go s.run()
+			time.Sleep(200 * time.Millisecond)
+			s.signals <- os.Kill
+			time.Sleep(200 * time.Millisecond)
+			if len(s.workflowEntries.Entries) == 0 {
+				t.Errorf("expected empty entries list")
+			}
+			if s.workflowEntries.Entries["test"].State != deployedState {
 				t.Errorf("expected close, got %v", s.workflowEntries.Entries["test"].State)
 			}
 		})

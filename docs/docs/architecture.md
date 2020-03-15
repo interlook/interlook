@@ -4,10 +4,10 @@ Technically, providers and provisioners are all implementations of the Extension
 
 ![](interlook-draw.png)
 
-
 Currently supported Providers:
 
-- [x] Docker Swarm (Docker Enterprise, CE not tested yet)
+- [x] Kubernetes
+- [x] Docker Swarm (Docker Enterprise, CE)
 
 Currently supported Provisioners:
 

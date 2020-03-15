@@ -33,10 +33,10 @@ type Extension struct {
 	TLSCert       string        `yaml:"tlsCert"`
 	TLSKey        string        `yaml:"tlsKey"`
 	PollInterval  time.Duration `yaml:"pollInterval"`
+	Cli           kubernetes.Interface
 	pollTicker    *time.Ticker
 	shutdown      chan bool
 	send          chan<- comm.Message
-	cli           kubernetes.Interface
 	waitGroup     sync.WaitGroup
 	listOptions   metav1.ListOptions
 }
@@ -66,14 +66,14 @@ func (p *Extension) Start(receive <-chan comm.Message, send chan<- comm.Message)
 
 	p.init()
 
-	if p.cli == nil {
-		p.cli, err = p.connect()
+	if p.Cli == nil {
+		p.Cli, err = p.connect()
 		if err != nil {
 			return err
 		}
 	}
 
-	_, err = p.cli.Discovery().ServerVersion()
+	_, err = p.Cli.Discovery().ServerVersion()
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (p *Extension) Stop() error {
 }
 
 func (p *Extension) listServices() (sl *v1.ServiceList, err error) {
-	return p.cli.CoreV1().Services("").List(p.listOptions)
+	return p.Cli.CoreV1().Services("").List(p.listOptions)
 }
 
 func (p *Extension) poll() {
@@ -201,7 +201,7 @@ func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Messa
 			labelSelect = append(labelSelect, fmt.Sprintf("%v=%v", k, v))
 		}
 
-		pods, err := p.cli.CoreV1().Pods("").List(metav1.ListOptions{LabelSelector: strings.Join(labelSelect, ",")})
+		pods, err := p.Cli.CoreV1().Pods("").List(metav1.ListOptions{LabelSelector: strings.Join(labelSelect, ",")})
 		if err != nil {
 			errMsg := fmt.Sprintf("error getting pods: %v", err.Error())
 			log.Error(errMsg)
@@ -227,7 +227,7 @@ func (p *Extension) buildMessageFromService(service *v1.Service) (msg comm.Messa
 
 func (p *Extension) getServiceByName(svcName, namespace string) (*v1.Service, bool) {
 
-	svc, err := p.cli.CoreV1().Services(namespace).Get(svcName, metav1.GetOptions{})
+	svc, err := p.Cli.CoreV1().Services(namespace).Get(svcName, metav1.GetOptions{})
 	if err != nil {
 		return nil, false
 	}

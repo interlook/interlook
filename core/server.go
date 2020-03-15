@@ -2,14 +2,11 @@ package core
 
 import (
 	"fmt"
-	"github.com/fatih/structs"
 	"github.com/interlook/interlook/comm"
 	"github.com/interlook/interlook/config"
 	"github.com/interlook/interlook/log"
 	"github.com/pkg/errors"
 	"net/http"
-	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -85,27 +82,24 @@ func initServer(configFile string) (server, error) {
 // initExtensions initializes the extensions that are configured in the workflow steps
 func (s *server) initExtensions() {
 	s.extensions = make(map[string]Extension)
-	srvConf := structs.New(s.config)
 
-	// get needed extensions from workflow
+	knownExt := map[string]Extension{
+		"provider.kubernetes": s.config.Provider.Kubernetes,
+		"provider.swarm":      s.config.Provider.Swarm,
+		"provisioner.consul":  s.config.DNS.Consul,
+		"provisioner.ipalloc": s.config.IPAM.IPAlloc,
+		"provisioner.f5ltm":   s.config.LB.F5LTM,
+		"provisioner.kemplm":  s.config.LB.KempLM,
+	}
+
 	for _, step := range initWorkflow(s.config.Core.WorkflowSteps) {
-		ext := strings.Split(step.Name, ".")
-		if len(ext) == 2 {
-			extType := strings.ToLower(ext[0])
-			extName := strings.ToLower(ext[1])
-			// loop through struct fields. Ifs are needed due to case sensitivity
-			for _, f := range srvConf.Fields() {
-				if strings.ToLower(f.Name()) == extType && f.Kind() == reflect.Struct {
-					for _, n := range srvConf.Field(f.Name()).Fields() {
-						if strings.ToLower(n.Name()) == extName {
-							s.extensions[step.Name] = n.Value().(Extension)
-							log.Infof("Extension %v initialized", step)
-						}
-					}
-				}
+		for k, v := range knownExt {
+			if k == step.Name {
+				s.extensions[step.Name] = v
 			}
 		}
 	}
+
 }
 
 // run starts all core components and extensions

@@ -32,7 +32,20 @@ Here is an example for an IPAM IPAlloc extension:
 	} `yaml:"ipam,omitempty"`
 ```
 
-On startup, `interlook` will start all extensions that are configured in the core.workflow setup. If a configured extension fails to start, interlook will panic.
+On startup, `interlook` will start all extensions that are configured in the core.workflow setup. If a configured extension fails to start, interlook will fail to start.
+
+In order to avoid reflexion, the `core`'s `initExtensions` contains a map of extensions that needs to be enriched with new extension:
+
+```golang
+    knownExt := map[string]Extension{
+        "provider.kubernetes": s.config.Provider.Kubernetes,
+        "provider.swarm":      s.config.Provider.Swarm,
+        "provisioner.consul":  s.config.DNS.Consul,
+        "provisioner.ipalloc": s.config.IPAM.IPAlloc,
+        "provisioner.f5ltm":   s.config.LB.F5LTM,
+        "provisioner.kemplm":  s.config.LB.KempLM,
+    }
+```
 
 
 ## Messages
