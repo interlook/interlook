@@ -7,6 +7,7 @@ nav:
     - Workflow: workflow.md
     -   Provider:
             -   Swarm: swarm.md
+            -   Kubernetes: kubernetes.md
     -   Provisioner:
             -   dns:
                     -   consul: consul.md
