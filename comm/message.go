@@ -52,6 +52,14 @@ func (m *Message) SetTargetWeight() {
 	m.Service.Targets = wt
 }
 
+func (m *Message) GetServiceID() string {
+	key := m.Service.Name
+	if m.Service.Namespace != "" {
+		key = key + "/" + m.Service.Namespace
+	}
+	return key
+}
+
 // BuildMessage returns a message built on service information
 func BuildMessage(service Service, reverse bool) Message {
 	var msg Message

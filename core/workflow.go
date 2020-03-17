@@ -306,9 +306,9 @@ func newWorkflowEntries(dbFile, workflowConfig string, commChan chan comm.Messag
 }
 
 func (we *workflowEntries) serviceNeedUpdate(msg comm.Message) bool {
-	curSvc, ok := we.Entries[msg.Service.Name]
+	curSvc, ok := we.Entries[msg.GetServiceID()]
 	if !ok {
-		log.Debugf("Service %v not found ", msg.Service.Name)
+		log.Debugf("Service %v not found ", msg.GetServiceID())
 		return true
 	}
 
@@ -327,27 +327,26 @@ func (we *workflowEntries) serviceNeedUpdate(msg comm.Message) bool {
 
 // mergeMessage by inserting/merging it to the workflow entries list
 func (we *workflowEntries) mergeMessage(msg comm.Message) {
-
+	serviceID := msg.GetServiceID()
 	if !we.serviceNeedUpdate(msg) {
-		log.Debugf("Service %v already in desired step\n", msg.Service.Name)
-		we.Entries[msg.Service.Name].LastUpdate = time.Now()
+		log.Debugf("Service %v already in desired step\n", serviceID)
+		we.Entries[serviceID].LastUpdate = time.Now()
 		return
 	}
 
 	we.Lock()
 	defer we.Unlock()
 
-	_, ok := we.Entries[msg.Service.Name]
+	_, ok := we.Entries[serviceID]
 	if !ok {
 		log.Debugf("Service not found, creating it %v", msg)
-		we.addEntry(msg.Service.Name)
+		we.addEntry(serviceID)
 	}
 
-	//entry, _ := we.Entries[msg.Service.Name]
-	we.Entries[msg.Service.Name].updateService(msg)
-	we.Entries[msg.Service.Name].step = we.Entries[msg.Service.Name].workflowSteps.getTransition(msg.Sender)
+	we.Entries[serviceID].updateService(msg)
+	we.Entries[serviceID].step = we.Entries[serviceID].workflowSteps.getTransition(msg.Sender)
 
-	go we.Entries[msg.Service.Name].step.toNext(we.Entries[msg.Service.Name], msg)
+	go we.Entries[serviceID].step.toNext(we.Entries[serviceID], msg)
 
 	return
 }

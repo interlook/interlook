@@ -249,3 +249,44 @@ func TestBuildDeleteMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestMessage_GetServiceID(t *testing.T) {
+	type fields struct {
+		Action      string
+		Sender      string
+		Destination string
+		Error       string
+		Service     Service
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		{"ns",
+			fields{Service: Service{
+				Name:      "test",
+				Namespace: "default",
+			}},
+			"test/default"},
+		{"ns",
+			fields{Service: Service{
+				Name: "test",
+			}},
+			"test"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Message{
+				Action:      tt.fields.Action,
+				Sender:      tt.fields.Sender,
+				Destination: tt.fields.Destination,
+				Error:       tt.fields.Error,
+				Service:     tt.fields.Service,
+			}
+			if got := m.GetServiceID(); got != tt.want {
+				t.Errorf("GetServiceID() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

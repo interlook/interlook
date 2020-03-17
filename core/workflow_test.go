@@ -794,7 +794,7 @@ func Test_workflowEntries_serviceNeedUpdate(t *testing.T) {
 		{"NeedUpdateState",
 			fields{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"test": &workflowEntry{
+				Entries: map[string]*workflowEntry{"test/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -846,7 +846,7 @@ func Test_workflowEntries_serviceNeedUpdate(t *testing.T) {
 		{"NeedUpdateNotFound",
 			fields{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"dummy": &workflowEntry{
+				Entries: map[string]*workflowEntry{"dummy/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -884,7 +884,7 @@ func Test_workflowEntries_serviceNeedUpdate(t *testing.T) {
 		{"NoUpdate",
 			fields{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"dummy": &workflowEntry{
+				Entries: map[string]*workflowEntry{"dummy/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -967,7 +967,7 @@ func Test_workflowEntries_mergeMessage(t *testing.T) {
 		{"NoUpdate",
 			fields{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"dummy": &workflowEntry{
+				Entries: map[string]*workflowEntry{"dummy/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -994,7 +994,7 @@ func Test_workflowEntries_mergeMessage(t *testing.T) {
 			}},
 			workflowEntries{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"dummy": &workflowEntry{
+				Entries: map[string]*workflowEntry{"dummy/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -1022,7 +1022,7 @@ func Test_workflowEntries_mergeMessage(t *testing.T) {
 		{"Update",
 			fields{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"dummy": &workflowEntry{
+				Entries: map[string]*workflowEntry{"dummy/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -1051,7 +1051,7 @@ func Test_workflowEntries_mergeMessage(t *testing.T) {
 			}},
 			workflowEntries{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"dummy": &workflowEntry{
+				Entries: map[string]*workflowEntry{"dummy/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -1080,7 +1080,7 @@ func Test_workflowEntries_mergeMessage(t *testing.T) {
 		{"UpdateNew",
 			fields{
 				Mutex:          sync.Mutex{},
-				Entries:        map[string]*workflowEntry{"test": &workflowEntry{}},
+				Entries:        map[string]*workflowEntry{"test/default": &workflowEntry{}},
 				DBFile:         "dummy.db",
 				WorkflowConfig: "provider.kubernetes",
 				CommChan:       ch,
@@ -1096,7 +1096,7 @@ func Test_workflowEntries_mergeMessage(t *testing.T) {
 			}},
 			workflowEntries{
 				Mutex: sync.Mutex{},
-				Entries: map[string]*workflowEntry{"dummy": &workflowEntry{
+				Entries: map[string]*workflowEntry{"dummy/default": &workflowEntry{
 					Mutex:          sync.Mutex{},
 					WorkInProgress: false,
 					WIPTime:        time.Time{},
@@ -1135,7 +1135,7 @@ func Test_workflowEntries_mergeMessage(t *testing.T) {
 			}
 			we.mergeMessage(tt.args.msg)
 			//time.Sleep(1100*time.Millisecond)
-			if !entryIsOk(we.Entries[tt.args.msg.Service.Name], tt.want.Entries[tt.args.msg.Service.Name]) {
+			if !entryIsOk(we.Entries[tt.args.msg.GetServiceID()], tt.want.Entries[tt.args.msg.GetServiceID()]) {
 				t.Errorf("mergeMessage() got = %v, want %v", we.Entries[tt.args.msg.Service.Name], tt.want.Entries[tt.args.msg.Service.Name])
 			}
 		})
