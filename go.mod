@@ -19,9 +19,8 @@ require (
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/scottdware/go-bigip v0.0.0-00010101000000-000000000000
-
 	github.com/sirupsen/logrus v1.4.2
-	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
+	golang.org/x/net v0.7.0
 	google.golang.org/grpc v1.19.1 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20190905181640-827449938966
 	gotest.tools v2.2.0+incompatible // indirect
