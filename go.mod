@@ -16,10 +16,9 @@ require (
 	github.com/hashicorp/consul/api v1.2.0
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
-	github.com/opencontainers/image-spec v1.0.1 // indirect
+	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/scottdware/go-bigip v0.0.0-00010101000000-000000000000
-
 	github.com/sirupsen/logrus v1.4.2
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
 	google.golang.org/grpc v1.19.1 // indirect
